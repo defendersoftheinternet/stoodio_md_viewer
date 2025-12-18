@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- CSP will be set by Electron in production -->
+  <title>Stoodio MD</title>
+</head>
+
+<body>
+  <div id="app">
+    <header id="titlebar" class="titlebar">
+      <span id="filename" class="filename">Untitled</span>
+      <button id="toggle-source-btn" class="titlebar-btn" title="Toggle Source Code">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 18 22 12 16 6"></polyline>
+          <polyline points="8 6 2 12 8 18"></polyline>
+        </svg>
+      </button>
+    </header>
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <h2>Outline</h2>
+      </div>
+      <nav id="outline" class="outline"></nav>
+    </aside>
+    <main id="editor-container" class="editor-container">
+      <div id="editor" spellcheck="false"></div>
+    </main>
+  </div>
+  <script type="module" src="/src/renderer/main.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "stoodio-md-viewer",
+  "version": "0.1.0",
+  "description": "A minimal markdown editor with live preview",
+  "main": "src/main/main.js",
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "electron . --dev",
+    "build": "vite build && cp -r src/main dist/",
+    "start": "npm run build && electron .",
+    "preview": "vite preview"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "@milkdown/crepe": "^7.6.0"
+  }
+}

@@ -1,0 +1,788 @@
+/* Stoodio MD Viewer - Main Styles */
+
+:root {
+  /* Spacing */
+  --sidebar-width: 200px;
+  --titlebar-height: 38px;
+  --content-padding: 48px;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  --font-serif: Georgia, 'Times New Roman', Times, serif;
+  --font-literary: 'Palatino Linotype', Palatino, 'Book Antiqua', serif;
+  --font-modern: 'Avenir Next', Avenir, 'Helvetica Neue', Helvetica, sans-serif;
+  --font-humanist: Optima, Candara, 'Noto Sans', source-sans-pro, sans-serif;
+}
+
+/* ============================================
+   THEMES
+   ============================================ */
+
+/* GitHub (Default Light) - matches Typora's GitHub theme */
+[data-theme="github"],
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f8f8;
+  --bg-sidebar: #fafafa;
+  --text-primary: #333333;
+  --text-secondary: #777777;
+  --text-muted: #777777;
+  --border-color: #eee;
+  --border-color-strong: #dfe2e5;
+  --accent-color: #4183C4;
+  --accent-hover: #3572a5;
+  --code-bg: #f3f4f4;
+  --code-border: #e7eaed;
+  --font-body: 'Open Sans', 'Clear Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-size-base: 16px;
+  --line-height-base: 1.6;
+}
+
+/* GitHub Dark */
+[data-theme="github-dark"] {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-sidebar: #0d1117;
+  --text-primary: #c9d1d9;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --border-color: #30363d;
+  --accent-color: #58a6ff;
+  --accent-hover: #79b8ff;
+  --font-body: var(--font-sans);
+  --font-size-base: 16px;
+  --line-height-base: 1.6;
+}
+
+/* Sepia (Warm reading theme) */
+[data-theme="sepia"] {
+  --bg-primary: #f4ecd8;
+  --bg-secondary: #ebe3d1;
+  --bg-sidebar: #ebe3d1;
+  --text-primary: #5b4636;
+  --text-secondary: #7a6652;
+  --text-muted: #998675;
+  --border-color: #d4c9b5;
+  --accent-color: #8b5a2b;
+  --accent-hover: #6d4522;
+  --font-body: var(--font-literary);
+  --font-size-base: 17px;
+  --line-height-base: 1.7;
+}
+
+/* Night (Pure dark) */
+[data-theme="night"] {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #252525;
+  --bg-sidebar: #1a1a1a;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --text-muted: #707070;
+  --border-color: #333333;
+  --accent-color: #6eb5ff;
+  --accent-hover: #8ec5ff;
+  --font-body: var(--font-modern);
+  --font-size-base: 16px;
+  --line-height-base: 1.65;
+}
+
+/* Newsprint (Classic print look) */
+[data-theme="newsprint"] {
+  --bg-primary: #f5f5f0;
+  --bg-secondary: #eaeae5;
+  --bg-sidebar: #eaeae5;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #6a6a6a;
+  --border-color: #c0c0b8;
+  --accent-color: #1a1a1a;
+  --accent-hover: #333333;
+  --font-body: var(--font-serif);
+  --font-size-base: 17px;
+  --line-height-base: 1.7;
+}
+
+/* Gothic (High contrast) */
+[data-theme="gothic"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f0f0f0;
+  --bg-sidebar: #f0f0f0;
+  --text-primary: #000000;
+  --text-secondary: #333333;
+  --text-muted: #555555;
+  --border-color: #cccccc;
+  --accent-color: #000000;
+  --accent-hover: #333333;
+  --font-body: var(--font-humanist);
+  --font-size-base: 16px;
+  --line-height-base: 1.6;
+}
+
+/* Dracula (Popular dark theme) */
+[data-theme="dracula"] {
+  --bg-primary: #282a36;
+  --bg-secondary: #343746;
+  --bg-sidebar: #21222c;
+  --text-primary: #f8f8f2;
+  --text-secondary: #bfbfbf;
+  --text-muted: #6272a4;
+  --border-color: #44475a;
+  --accent-color: #bd93f9;
+  --accent-hover: #caa9fa;
+  --font-body: var(--font-mono);
+  --font-size-base: 15px;
+  --line-height-base: 1.5;
+}
+
+/* Solarized Light */
+[data-theme="solarized-light"] {
+  --bg-primary: #fdf6e3;
+  --bg-secondary: #eee8d5;
+  --bg-sidebar: #eee8d5;
+  --text-primary: #657b83;
+  --text-secondary: #839496;
+  --text-muted: #93a1a1;
+  --border-color: #d3cbb7;
+  --accent-color: #268bd2;
+  --accent-hover: #1a6ca8;
+  --font-body: var(--font-modern);
+  --font-size-base: 16px;
+  --line-height-base: 1.6;
+}
+
+/* Reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* App layout */
+#app {
+  display: flex;
+  height: 100vh;
+  padding-top: var(--titlebar-height);
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--bg-sidebar);
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s ease, min-width 0.2s ease;
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  border-right: none;
+}
+
+.sidebar-header {
+  padding: 12px 16px;
+  border-bottom: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-header:hover {
+  background: var(--bg-secondary);
+}
+
+.sidebar-header h2 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+/* Outline */
+.outline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.outline-item {
+  display: block;
+  padding: 6px 16px;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.1s;
+}
+
+.outline-item:hover {
+  background: var(--bg-secondary);
+}
+
+.outline-h1 {
+  padding-left: 16px;
+  font-weight: 600;
+}
+
+.outline-h2 {
+  padding-left: 28px;
+}
+
+.outline-h3 {
+  padding-left: 40px;
+  color: var(--text-secondary);
+}
+
+.outline-h4 {
+  padding-left: 52px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.outline-h5 {
+  padding-left: 64px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.outline-h6 {
+  padding-left: 76px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.outline-empty {
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Editor container */
+.editor-container {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg-primary);
+}
+
+/* Milkdown editor customization */
+#editor {
+  max-width: 100%;
+  margin: 0;
+  padding: 24px 80px;
+  min-height: 100%;
+}
+
+/* Constrain content width on very large screens */
+@media (min-width: 1600px) {
+  #editor {
+    padding: 24px 120px;
+  }
+}
+
+/* Override Milkdown frame theme for our colors */
+.milkdown {
+  --background: var(--bg-primary) !important;
+  --foreground: var(--text-primary) !important;
+  --solid: var(--text-primary) !important;
+  --secondary: var(--text-secondary) !important;
+  --line: var(--border-color) !important;
+  --surface: var(--bg-secondary) !important;
+  --primary: var(--accent-color) !important;
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Force background on all milkdown elements */
+.milkdown,
+.milkdown .editor,
+.milkdown .ProseMirror,
+.milkdown-editor,
+[data-milkdown-root] {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Typography overrides - apply to all text elements */
+.milkdown,
+.milkdown .editor,
+.milkdown .ProseMirror,
+.milkdown p,
+.milkdown li,
+.milkdown td,
+.milkdown th,
+.milkdown blockquote {
+  font-family: var(--font-body, var(--font-sans)) !important;
+  font-size: var(--font-size-base, 16px) !important;
+  line-height: var(--line-height-base, 1.6) !important;
+}
+
+/* Editor content area - matches Typora GitHub theme */
+.milkdown .editor,
+.milkdown .ProseMirror {
+  font-weight: normal;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 30px;
+  padding-bottom: 100px;
+  background: var(--bg-primary) !important;
+}
+
+@media only screen and (min-width: 1400px) {
+  .milkdown .editor,
+  .milkdown .ProseMirror {
+    max-width: 1024px;
+  }
+}
+
+@media only screen and (min-width: 1800px) {
+  .milkdown .editor,
+  .milkdown .ProseMirror {
+    max-width: 1200px;
+  }
+}
+
+/* Theme-specific fonts (direct application) */
+
+/* GitHub theme - uses Open Sans */
+[data-theme="github"] .milkdown,
+[data-theme="github"] .milkdown .ProseMirror,
+[data-theme="github"] .milkdown p,
+[data-theme="github"] .milkdown li,
+[data-theme="github"] .milkdown h1,
+[data-theme="github"] .milkdown h2,
+[data-theme="github"] .milkdown h3,
+[data-theme="github"] .milkdown h4,
+[data-theme="github"] .milkdown h5,
+[data-theme="github"] .milkdown h6 {
+  font-family: 'Open Sans', 'Clear Sans', 'Helvetica Neue', Helvetica, Arial, 'Segoe UI Emoji', sans-serif !important;
+}
+
+[data-theme="sepia"] .milkdown,
+[data-theme="sepia"] .milkdown .ProseMirror,
+[data-theme="sepia"] .milkdown p,
+[data-theme="sepia"] .milkdown li,
+[data-theme="sepia"] .milkdown h1,
+[data-theme="sepia"] .milkdown h2,
+[data-theme="sepia"] .milkdown h3,
+[data-theme="sepia"] .milkdown h4,
+[data-theme="sepia"] .milkdown h5,
+[data-theme="sepia"] .milkdown h6 {
+  font-family: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif !important;
+}
+
+[data-theme="sepia"] .milkdown p,
+[data-theme="sepia"] .milkdown li {
+  font-size: 17px !important;
+  line-height: 1.7 !important;
+}
+
+[data-theme="newsprint"] .milkdown,
+[data-theme="newsprint"] .milkdown .ProseMirror,
+[data-theme="newsprint"] .milkdown p,
+[data-theme="newsprint"] .milkdown li,
+[data-theme="newsprint"] .milkdown h1,
+[data-theme="newsprint"] .milkdown h2,
+[data-theme="newsprint"] .milkdown h3,
+[data-theme="newsprint"] .milkdown h4,
+[data-theme="newsprint"] .milkdown h5,
+[data-theme="newsprint"] .milkdown h6 {
+  font-family: Georgia, 'Times New Roman', Times, serif !important;
+}
+
+[data-theme="newsprint"] .milkdown p,
+[data-theme="newsprint"] .milkdown li {
+  font-size: 17px !important;
+  line-height: 1.7 !important;
+}
+
+[data-theme="night"] .milkdown,
+[data-theme="night"] .milkdown .ProseMirror,
+[data-theme="night"] .milkdown p,
+[data-theme="night"] .milkdown li,
+[data-theme="night"] .milkdown h1,
+[data-theme="night"] .milkdown h2,
+[data-theme="night"] .milkdown h3,
+[data-theme="night"] .milkdown h4,
+[data-theme="night"] .milkdown h5,
+[data-theme="night"] .milkdown h6 {
+  font-family: 'Avenir Next', Avenir, 'Helvetica Neue', Helvetica, sans-serif !important;
+}
+
+[data-theme="gothic"] .milkdown,
+[data-theme="gothic"] .milkdown .ProseMirror,
+[data-theme="gothic"] .milkdown p,
+[data-theme="gothic"] .milkdown li,
+[data-theme="gothic"] .milkdown h1,
+[data-theme="gothic"] .milkdown h2,
+[data-theme="gothic"] .milkdown h3,
+[data-theme="gothic"] .milkdown h4,
+[data-theme="gothic"] .milkdown h5,
+[data-theme="gothic"] .milkdown h6 {
+  font-family: Optima, Candara, 'Noto Sans', source-sans-pro, sans-serif !important;
+}
+
+[data-theme="dracula"] .milkdown,
+[data-theme="dracula"] .milkdown .ProseMirror,
+[data-theme="dracula"] .milkdown p,
+[data-theme="dracula"] .milkdown li,
+[data-theme="dracula"] .milkdown h1,
+[data-theme="dracula"] .milkdown h2,
+[data-theme="dracula"] .milkdown h3,
+[data-theme="dracula"] .milkdown h4,
+[data-theme="dracula"] .milkdown h5,
+[data-theme="dracula"] .milkdown h6 {
+  font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace !important;
+}
+
+[data-theme="dracula"] .milkdown p,
+[data-theme="dracula"] .milkdown li {
+  font-size: 15px !important;
+  line-height: 1.5 !important;
+}
+
+[data-theme="solarized-light"] .milkdown,
+[data-theme="solarized-light"] .milkdown .ProseMirror,
+[data-theme="solarized-light"] .milkdown p,
+[data-theme="solarized-light"] .milkdown li,
+[data-theme="solarized-light"] .milkdown h1,
+[data-theme="solarized-light"] .milkdown h2,
+[data-theme="solarized-light"] .milkdown h3,
+[data-theme="solarized-light"] .milkdown h4,
+[data-theme="solarized-light"] .milkdown h5,
+[data-theme="solarized-light"] .milkdown h6 {
+  font-family: 'Avenir Next', Avenir, 'Helvetica Neue', Helvetica, sans-serif !important;
+}
+
+/* Headings - matches Typora GitHub theme */
+.milkdown h1,
+.milkdown h2,
+.milkdown h3,
+.milkdown h4,
+.milkdown h5,
+.milkdown h6 {
+  position: relative;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  font-weight: bold;
+  line-height: 1.4;
+}
+
+.milkdown h1 {
+  font-size: 2.25em;
+  line-height: 1.2;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 0.3em;
+}
+
+.milkdown h2 {
+  font-size: 1.75em;
+  line-height: 1.225;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 0.3em;
+}
+
+.milkdown h3 {
+  font-size: 1.5em;
+  line-height: 1.43;
+}
+
+.milkdown h4 {
+  font-size: 1.25em;
+}
+
+.milkdown h5 {
+  font-size: 1em;
+}
+
+.milkdown h6 {
+  font-size: 1em;
+  color: #777;
+}
+
+/* Paragraphs and blocks - matches Typora GitHub theme */
+.milkdown p,
+.milkdown blockquote,
+.milkdown ul,
+.milkdown ol,
+.milkdown dl,
+.milkdown table {
+  margin: 0.8em 0;
+}
+
+.milkdown code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background-color: #f3f4f4;
+  border: 1px solid #e7eaed;
+  border-radius: 3px;
+  padding: 0 2px 0 2px;
+}
+
+.milkdown pre,
+.milkdown .md-fences {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background-color: #f8f8f8;
+  border: 1px solid #e7eaed;
+  border-radius: 3px;
+  padding: 8px 16px 6px 16px;
+  margin: 15px 0;
+  overflow-x: auto;
+}
+
+.milkdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.milkdown blockquote {
+  border-left: 4px solid #dfe2e5;
+  padding: 0 15px;
+  color: #777777;
+  margin: 0.8em 0;
+}
+
+/* Links - matches Typora GitHub theme */
+.milkdown a {
+  color: #4183C4;
+  text-decoration: none;
+}
+
+.milkdown a:hover {
+  text-decoration: underline;
+}
+
+/* Lists - matches Typora GitHub theme */
+.milkdown ul,
+.milkdown ol {
+  padding-left: 30px;
+}
+
+.milkdown ul:first-child,
+.milkdown ol:first-child {
+  margin-top: 0;
+}
+
+.milkdown ul:last-child,
+.milkdown ol:last-child {
+  margin-bottom: 0;
+}
+
+.milkdown li > ol,
+.milkdown li > ul {
+  margin: 0;
+}
+
+.milkdown li {
+  margin-bottom: 0;
+}
+
+.milkdown strong {
+  font-weight: bold;
+}
+
+/* Tables - matches Typora GitHub theme */
+.milkdown table {
+  padding: 0;
+  word-break: initial;
+  border-collapse: collapse;
+}
+
+.milkdown table tr {
+  border: 1px solid #dfe2e5;
+  margin: 0;
+  padding: 0;
+}
+
+.milkdown table tr:nth-child(2n),
+.milkdown thead {
+  background-color: #f8f8f8;
+}
+
+.milkdown th {
+  font-weight: bold;
+  border: 1px solid #dfe2e5;
+  border-bottom: 0;
+  margin: 0;
+  padding: 6px 13px;
+}
+
+.milkdown td {
+  border: 1px solid #dfe2e5;
+  margin: 0;
+  padding: 6px 13px;
+}
+
+/* Horizontal rule - matches Typora GitHub theme */
+.milkdown hr {
+  height: 2px;
+  padding: 0;
+  margin: 16px 0;
+  background-color: #e7e7e7;
+  border: 0 none;
+  overflow: hidden;
+  box-sizing: content-box;
+}
+
+.milkdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+/* Task list checkboxes */
+.milkdown input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+/* Focus state */
+.milkdown .ProseMirror:focus {
+  outline: none;
+}
+
+/* Placeholder */
+.milkdown .ProseMirror p.is-editor-empty:first-child::before {
+  content: 'Start writing...';
+  color: var(--text-muted);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Titlebar */
+.titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--titlebar-height);
+  -webkit-app-region: drag;
+  background: var(--bg-primary);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.filename {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-primary);
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+  cursor: default;
+}
+
+.titlebar-btn {
+  position: absolute;
+  right: 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  transition: all 0.2s;
+}
+
+.titlebar-btn:hover {
+  opacity: 1;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.titlebar-btn.active {
+  opacity: 1;
+  color: var(--accent-color);
+  background: var(--bg-secondary);
+}
+
+/* Dark mode titlebar border */
+@media (prefers-color-scheme: dark) {
+  .titlebar {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .sidebar {
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Source Code Mode */
+.source-editor {
+  display: none;
+  width: 100%;
+  height: 100%;
+  padding: 24px 80px;
+  border: none;
+  resize: none;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.6;
+  outline: none;
+}
+
+@media (min-width: 1600px) {
+  .source-editor {
+    padding: 24px 120px;
+  }
+}

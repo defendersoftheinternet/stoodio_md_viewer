@@ -1,0 +1,90 @@
+/* Solarized Light Theme */
+
+[data-theme="solarized-light"] {
+  /* Colors */
+  --bg-primary: #fdf6e3;
+  --bg-secondary: #eee8d5;
+  --bg-sidebar: #eee8d5;
+  --text-primary: #657b83;
+  --text-secondary: #839496;
+  --text-muted: #93a1a1;
+  --border-color: #d3cbb7;
+  --border-color-strong: #c3bba7;
+  --accent-color: #268bd2;
+  --accent-hover: #1a6ca8;
+  --code-bg: #eee8d5;
+  --code-border: #d3cbb7;
+
+  /* Typography */
+  --font-body: 'Avenir Next', Avenir, 'Helvetica Neue', Helvetica, sans-serif;
+  --font-size-base: 16px;
+  --line-height-base: 1.6;
+}
+
+/* Font overrides */
+[data-theme="solarized-light"] .milkdown,
+[data-theme="solarized-light"] .milkdown .ProseMirror,
+[data-theme="solarized-light"] .milkdown p,
+[data-theme="solarized-light"] .milkdown li,
+[data-theme="solarized-light"] .milkdown h1,
+[data-theme="solarized-light"] .milkdown h2,
+[data-theme="solarized-light"] .milkdown h3,
+[data-theme="solarized-light"] .milkdown h4,
+[data-theme="solarized-light"] .milkdown h5,
+[data-theme="solarized-light"] .milkdown h6 {
+  font-family: 'Avenir Next', Avenir, 'Helvetica Neue', Helvetica, sans-serif !important;
+}
+
+/* Heading borders */
+[data-theme="solarized-light"] .milkdown h1,
+[data-theme="solarized-light"] .milkdown h2 {
+  border-bottom: 1px solid #d3cbb7;
+}
+
+[data-theme="solarized-light"] .milkdown h6 {
+  color: #93a1a1;
+}
+
+/* Links */
+[data-theme="solarized-light"] .milkdown a {
+  color: #268bd2;
+}
+
+/* Blockquotes */
+[data-theme="solarized-light"] .milkdown blockquote {
+  border-left: 4px solid #d3cbb7;
+  color: #839496;
+}
+
+/* Code */
+[data-theme="solarized-light"] .milkdown code {
+  background-color: #eee8d5;
+  border: 1px solid #d3cbb7;
+  color: #cb4b16;
+}
+
+[data-theme="solarized-light"] .milkdown pre,
+[data-theme="solarized-light"] .milkdown .md-fences {
+  background-color: #eee8d5;
+  border: 1px solid #d3cbb7;
+}
+
+/* Tables */
+[data-theme="solarized-light"] .milkdown table tr {
+  border: 1px solid #d3cbb7;
+}
+
+[data-theme="solarized-light"] .milkdown table tr:nth-child(2n),
+[data-theme="solarized-light"] .milkdown thead {
+  background-color: #eee8d5;
+}
+
+[data-theme="solarized-light"] .milkdown th,
+[data-theme="solarized-light"] .milkdown td {
+  border: 1px solid #d3cbb7;
+}
+
+/* Horizontal rule */
+[data-theme="solarized-light"] .milkdown hr {
+  background-color: #d3cbb7;
+}

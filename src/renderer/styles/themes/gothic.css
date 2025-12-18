@@ -1,0 +1,90 @@
+/* Gothic Theme - High contrast */
+
+[data-theme="gothic"] {
+  /* Colors */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f0f0f0;
+  --bg-sidebar: #f0f0f0;
+  --text-primary: #000000;
+  --text-secondary: #333333;
+  --text-muted: #555555;
+  --border-color: #cccccc;
+  --border-color-strong: #999999;
+  --accent-color: #000000;
+  --accent-hover: #333333;
+  --code-bg: #f0f0f0;
+  --code-border: #cccccc;
+
+  /* Typography */
+  --font-body: Optima, Candara, 'Noto Sans', source-sans-pro, sans-serif;
+  --font-size-base: 16px;
+  --line-height-base: 1.6;
+}
+
+/* Font overrides */
+[data-theme="gothic"] .milkdown,
+[data-theme="gothic"] .milkdown .ProseMirror,
+[data-theme="gothic"] .milkdown p,
+[data-theme="gothic"] .milkdown li,
+[data-theme="gothic"] .milkdown h1,
+[data-theme="gothic"] .milkdown h2,
+[data-theme="gothic"] .milkdown h3,
+[data-theme="gothic"] .milkdown h4,
+[data-theme="gothic"] .milkdown h5,
+[data-theme="gothic"] .milkdown h6 {
+  font-family: Optima, Candara, 'Noto Sans', source-sans-pro, sans-serif !important;
+}
+
+/* Heading borders */
+[data-theme="gothic"] .milkdown h1,
+[data-theme="gothic"] .milkdown h2 {
+  border-bottom: 2px solid #000000;
+}
+
+[data-theme="gothic"] .milkdown h6 {
+  color: #555555;
+}
+
+/* Links */
+[data-theme="gothic"] .milkdown a {
+  color: #000000;
+  text-decoration: underline;
+}
+
+/* Blockquotes */
+[data-theme="gothic"] .milkdown blockquote {
+  border-left: 4px solid #000000;
+  color: #333333;
+}
+
+/* Code */
+[data-theme="gothic"] .milkdown code {
+  background-color: #f0f0f0;
+  border: 1px solid #cccccc;
+}
+
+[data-theme="gothic"] .milkdown pre,
+[data-theme="gothic"] .milkdown .md-fences {
+  background-color: #f0f0f0;
+  border: 1px solid #cccccc;
+}
+
+/* Tables */
+[data-theme="gothic"] .milkdown table tr {
+  border: 1px solid #000000;
+}
+
+[data-theme="gothic"] .milkdown table tr:nth-child(2n),
+[data-theme="gothic"] .milkdown thead {
+  background-color: #f0f0f0;
+}
+
+[data-theme="gothic"] .milkdown th,
+[data-theme="gothic"] .milkdown td {
+  border: 1px solid #000000;
+}
+
+/* Horizontal rule */
+[data-theme="gothic"] .milkdown hr {
+  background-color: #000000;
+}

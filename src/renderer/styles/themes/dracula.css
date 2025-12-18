@@ -1,0 +1,105 @@
+/* Dracula Theme - Popular dark theme */
+
+[data-theme="dracula"] {
+  /* Colors */
+  --bg-primary: #282a36;
+  --bg-secondary: #343746;
+  --bg-sidebar: #21222c;
+  --text-primary: #f8f8f2;
+  --text-secondary: #bfbfbf;
+  --text-muted: #6272a4;
+  --border-color: #44475a;
+  --border-color-strong: #6272a4;
+  --accent-color: #bd93f9;
+  --accent-hover: #caa9fa;
+  --code-bg: #343746;
+  --code-border: #44475a;
+
+  /* Typography */
+  --font-body: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  --font-size-base: 15px;
+  --line-height-base: 1.5;
+}
+
+/* Font overrides */
+[data-theme="dracula"] .milkdown,
+[data-theme="dracula"] .milkdown .ProseMirror,
+[data-theme="dracula"] .milkdown p,
+[data-theme="dracula"] .milkdown li,
+[data-theme="dracula"] .milkdown h1,
+[data-theme="dracula"] .milkdown h2,
+[data-theme="dracula"] .milkdown h3,
+[data-theme="dracula"] .milkdown h4,
+[data-theme="dracula"] .milkdown h5,
+[data-theme="dracula"] .milkdown h6 {
+  font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace !important;
+}
+
+[data-theme="dracula"] .milkdown p,
+[data-theme="dracula"] .milkdown li {
+  font-size: 15px !important;
+  line-height: 1.5 !important;
+}
+
+/* Heading borders */
+[data-theme="dracula"] .milkdown h1,
+[data-theme="dracula"] .milkdown h2 {
+  border-bottom: 1px solid #44475a;
+}
+
+[data-theme="dracula"] .milkdown h6 {
+  color: #6272a4;
+}
+
+/* Links */
+[data-theme="dracula"] .milkdown a {
+  color: #8be9fd;
+}
+
+/* Blockquotes */
+[data-theme="dracula"] .milkdown blockquote {
+  border-left: 4px solid #bd93f9;
+  color: #bfbfbf;
+}
+
+/* Code */
+[data-theme="dracula"] .milkdown code {
+  background-color: #343746;
+  border: 1px solid #44475a;
+  color: #ff79c6;
+}
+
+[data-theme="dracula"] .milkdown pre,
+[data-theme="dracula"] .milkdown .md-fences {
+  background-color: #343746;
+  border: 1px solid #44475a;
+}
+
+/* Tables */
+[data-theme="dracula"] .milkdown table tr {
+  border: 1px solid #44475a;
+}
+
+[data-theme="dracula"] .milkdown table tr:nth-child(2n),
+[data-theme="dracula"] .milkdown thead {
+  background-color: #343746;
+}
+
+[data-theme="dracula"] .milkdown th,
+[data-theme="dracula"] .milkdown td {
+  border: 1px solid #44475a;
+}
+
+/* Horizontal rule */
+[data-theme="dracula"] .milkdown hr {
+  background-color: #44475a;
+}
+
+/* Dark theme border adjustments */
+[data-theme="dracula"] .titlebar {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dracula"] .sidebar {
+  border-right-color: rgba(255, 255, 255, 0.1);
+}

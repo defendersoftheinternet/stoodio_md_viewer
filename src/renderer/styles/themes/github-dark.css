@@ -1,0 +1,98 @@
+/* GitHub Dark Theme */
+
+[data-theme="github-dark"] {
+  /* Colors */
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-sidebar: #0d1117;
+  --text-primary: #c9d1d9;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --border-color: #30363d;
+  --border-color-strong: #30363d;
+  --accent-color: #58a6ff;
+  --accent-hover: #79b8ff;
+  --code-bg: #161b22;
+  --code-border: #30363d;
+
+  /* Typography */
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-size-base: 16px;
+  --line-height-base: 1.6;
+}
+
+/* Font overrides */
+[data-theme="github-dark"] .milkdown,
+[data-theme="github-dark"] .milkdown .ProseMirror,
+[data-theme="github-dark"] .milkdown p,
+[data-theme="github-dark"] .milkdown li,
+[data-theme="github-dark"] .milkdown h1,
+[data-theme="github-dark"] .milkdown h2,
+[data-theme="github-dark"] .milkdown h3,
+[data-theme="github-dark"] .milkdown h4,
+[data-theme="github-dark"] .milkdown h5,
+[data-theme="github-dark"] .milkdown h6 {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif !important;
+}
+
+/* Heading borders */
+[data-theme="github-dark"] .milkdown h1,
+[data-theme="github-dark"] .milkdown h2 {
+  border-bottom: 1px solid #30363d;
+}
+
+[data-theme="github-dark"] .milkdown h6 {
+  color: #8b949e;
+}
+
+/* Links */
+[data-theme="github-dark"] .milkdown a {
+  color: #58a6ff;
+}
+
+/* Blockquotes */
+[data-theme="github-dark"] .milkdown blockquote {
+  border-left: 4px solid #30363d;
+  color: #8b949e;
+}
+
+/* Code */
+[data-theme="github-dark"] .milkdown code {
+  background-color: #161b22;
+  border: 1px solid #30363d;
+}
+
+[data-theme="github-dark"] .milkdown pre,
+[data-theme="github-dark"] .milkdown .md-fences {
+  background-color: #161b22;
+  border: 1px solid #30363d;
+}
+
+/* Tables */
+[data-theme="github-dark"] .milkdown table tr {
+  border: 1px solid #30363d;
+}
+
+[data-theme="github-dark"] .milkdown table tr:nth-child(2n),
+[data-theme="github-dark"] .milkdown thead {
+  background-color: #161b22;
+}
+
+[data-theme="github-dark"] .milkdown th,
+[data-theme="github-dark"] .milkdown td {
+  border: 1px solid #30363d;
+}
+
+/* Horizontal rule */
+[data-theme="github-dark"] .milkdown hr {
+  background-color: #30363d;
+}
+
+/* Titlebar border adjustment for dark themes */
+[data-theme="github-dark"] .titlebar {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="github-dark"] .sidebar {
+  border-right-color: rgba(255, 255, 255, 0.1);
+}

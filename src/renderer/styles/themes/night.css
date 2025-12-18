@@ -1,0 +1,98 @@
+/* Night Theme - Pure dark */
+
+[data-theme="night"] {
+  /* Colors */
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #252525;
+  --bg-sidebar: #1a1a1a;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --text-muted: #707070;
+  --border-color: #333333;
+  --border-color-strong: #444444;
+  --accent-color: #6eb5ff;
+  --accent-hover: #8ec5ff;
+  --code-bg: #252525;
+  --code-border: #333333;
+
+  /* Typography */
+  --font-body: 'Avenir Next', Avenir, 'Helvetica Neue', Helvetica, sans-serif;
+  --font-size-base: 16px;
+  --line-height-base: 1.65;
+}
+
+/* Font overrides */
+[data-theme="night"] .milkdown,
+[data-theme="night"] .milkdown .ProseMirror,
+[data-theme="night"] .milkdown p,
+[data-theme="night"] .milkdown li,
+[data-theme="night"] .milkdown h1,
+[data-theme="night"] .milkdown h2,
+[data-theme="night"] .milkdown h3,
+[data-theme="night"] .milkdown h4,
+[data-theme="night"] .milkdown h5,
+[data-theme="night"] .milkdown h6 {
+  font-family: 'Avenir Next', Avenir, 'Helvetica Neue', Helvetica, sans-serif !important;
+}
+
+/* Heading borders */
+[data-theme="night"] .milkdown h1,
+[data-theme="night"] .milkdown h2 {
+  border-bottom: 1px solid #333333;
+}
+
+[data-theme="night"] .milkdown h6 {
+  color: #a0a0a0;
+}
+
+/* Links */
+[data-theme="night"] .milkdown a {
+  color: #6eb5ff;
+}
+
+/* Blockquotes */
+[data-theme="night"] .milkdown blockquote {
+  border-left: 4px solid #333333;
+  color: #a0a0a0;
+}
+
+/* Code */
+[data-theme="night"] .milkdown code {
+  background-color: #252525;
+  border: 1px solid #333333;
+}
+
+[data-theme="night"] .milkdown pre,
+[data-theme="night"] .milkdown .md-fences {
+  background-color: #252525;
+  border: 1px solid #333333;
+}
+
+/* Tables */
+[data-theme="night"] .milkdown table tr {
+  border: 1px solid #333333;
+}
+
+[data-theme="night"] .milkdown table tr:nth-child(2n),
+[data-theme="night"] .milkdown thead {
+  background-color: #252525;
+}
+
+[data-theme="night"] .milkdown th,
+[data-theme="night"] .milkdown td {
+  border: 1px solid #333333;
+}
+
+/* Horizontal rule */
+[data-theme="night"] .milkdown hr {
+  background-color: #333333;
+}
+
+/* Dark theme border adjustments */
+[data-theme="night"] .titlebar {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="night"] .sidebar {
+  border-right-color: rgba(255, 255, 255, 0.1);
+}

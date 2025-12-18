@@ -1,0 +1,95 @@
+/* Sepia Theme - Warm reading theme */
+
+[data-theme="sepia"] {
+  /* Colors */
+  --bg-primary: #f4ecd8;
+  --bg-secondary: #ebe3d1;
+  --bg-sidebar: #ebe3d1;
+  --text-primary: #5b4636;
+  --text-secondary: #7a6652;
+  --text-muted: #998675;
+  --border-color: #d4c9b5;
+  --border-color-strong: #c4b9a5;
+  --accent-color: #8b5a2b;
+  --accent-hover: #6d4522;
+  --code-bg: #ebe3d1;
+  --code-border: #d4c9b5;
+
+  /* Typography */
+  --font-body: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+  --font-size-base: 17px;
+  --line-height-base: 1.7;
+}
+
+/* Font overrides */
+[data-theme="sepia"] .milkdown,
+[data-theme="sepia"] .milkdown .ProseMirror,
+[data-theme="sepia"] .milkdown p,
+[data-theme="sepia"] .milkdown li,
+[data-theme="sepia"] .milkdown h1,
+[data-theme="sepia"] .milkdown h2,
+[data-theme="sepia"] .milkdown h3,
+[data-theme="sepia"] .milkdown h4,
+[data-theme="sepia"] .milkdown h5,
+[data-theme="sepia"] .milkdown h6 {
+  font-family: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif !important;
+}
+
+[data-theme="sepia"] .milkdown p,
+[data-theme="sepia"] .milkdown li {
+  font-size: 17px !important;
+  line-height: 1.7 !important;
+}
+
+/* Heading borders */
+[data-theme="sepia"] .milkdown h1,
+[data-theme="sepia"] .milkdown h2 {
+  border-bottom: 1px solid #d4c9b5;
+}
+
+[data-theme="sepia"] .milkdown h6 {
+  color: #998675;
+}
+
+/* Links */
+[data-theme="sepia"] .milkdown a {
+  color: #8b5a2b;
+}
+
+/* Blockquotes */
+[data-theme="sepia"] .milkdown blockquote {
+  border-left: 4px solid #d4c9b5;
+  color: #7a6652;
+}
+
+/* Code */
+[data-theme="sepia"] .milkdown code {
+  background-color: #ebe3d1;
+  border: 1px solid #d4c9b5;
+}
+
+[data-theme="sepia"] .milkdown pre,
+[data-theme="sepia"] .milkdown .md-fences {
+  background-color: #ebe3d1;
+  border: 1px solid #d4c9b5;
+}
+
+/* Tables */
+[data-theme="sepia"] .milkdown table tr {
+  border: 1px solid #d4c9b5;
+}
+
+[data-theme="sepia"] .milkdown table tr:nth-child(2n),
+[data-theme="sepia"] .milkdown thead {
+  background-color: #ebe3d1;
+}
+
+[data-theme="sepia"] .milkdown th,
+[data-theme="sepia"] .milkdown td {
+  border: 1px solid #d4c9b5;
+}
+
+/* Horizontal rule */
+[data-theme="sepia"] .milkdown hr {
+  background-color: #d4c9b5;
+}

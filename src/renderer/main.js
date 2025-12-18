@@ -1,4 +1,4 @@
-import { Crepe } from '@milkdown/crepe';
+import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import {
   toggleStrongCommand,
   toggleEmphasisCommand,
@@ -8,15 +8,63 @@ import {
   wrapInBulletListCommand,
   wrapInOrderedListCommand,
   wrapInBlockquoteCommand,
-  createCodeBlockCommand
+  createCodeBlockCommand,
+  orderedListSchema,
+  listItemSchema
 } from '@milkdown/preset-commonmark';
 import {
   toggleStrikethroughCommand
 } from '@milkdown/preset-gfm';
-import { callCommand } from '@milkdown/utils';
+import { callCommand, $prose } from '@milkdown/utils';
+import { Plugin, PluginKey } from '@milkdown/prose/state';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
-import './styles/app.css';
+import './styles/core.css';
+import './styles/themes/index.css';
+
+// Custom plugin to fix ordered list numbering
+// This addresses a bug where new list items don't get proper sequential numbers
+const fixOrderedListPlugin = $prose((ctx) => {
+  return new Plugin({
+    key: new PluginKey('STOODIO_FIX_LIST_ORDER'),
+    appendTransaction: (transactions, _oldState, newState) => {
+      // Skip if no meaningful changes
+      if (!transactions.some(tr => tr.docChanged)) return null;
+
+      const orderedListType = orderedListSchema.type(ctx);
+      const listItemType = listItemSchema.type(ctx);
+
+      let tr = newState.tr;
+      let needDispatch = false;
+
+      // Find all ordered lists and update their item labels
+      newState.doc.descendants((node, pos) => {
+        if (node.type === orderedListType) {
+          let itemIndex = 0;
+          node.forEach((child, offset) => {
+            if (child.type === listItemType) {
+              const expectedLabel = `${itemIndex + 1}.`;
+              const itemPos = pos + offset + 1;
+
+              if (child.attrs.label !== expectedLabel || child.attrs.listType !== 'ordered') {
+                tr = tr.setNodeMarkup(itemPos, undefined, {
+                  ...child.attrs,
+                  label: expectedLabel,
+                  listType: 'ordered'
+                });
+                needDispatch = true;
+              }
+              itemIndex++;
+            }
+          });
+        }
+        return true; // Continue traversing
+      });
+
+      return needDispatch ? tr.setMeta('addToHistory', false) : null;
+    }
+  });
+});
 
 // Default content for new documents
 const defaultContent = `# Welcome to Stoodio MD
@@ -32,6 +80,12 @@ A minimal markdown editor with live preview.
 - Links and images
 - Tables
 - And more...
+
+## Numbered List Example
+
+1. First item
+2. Second item
+3. Third item
 
 ## Getting Started
 
@@ -57,6 +111,26 @@ let crepe = null;
 let currentContent = defaultContent;
 let isSourceMode = false;
 
+// Command registry - maps command names to Milkdown actions
+const formatCommands = {
+  bold: () => callCommand(toggleStrongCommand.key),
+  italic: () => callCommand(toggleEmphasisCommand.key),
+  strike: () => callCommand(toggleStrikethroughCommand.key),
+  code: () => callCommand(toggleInlineCodeCommand.key),
+  link: () => callCommand(toggleLinkCommand.key)
+};
+
+const paragraphCommands = {
+  h1: () => callCommand(wrapInHeadingCommand.key, 1),
+  h2: () => callCommand(wrapInHeadingCommand.key, 2),
+  h3: () => callCommand(wrapInHeadingCommand.key, 3),
+  paragraph: () => null, // No direct command available
+  bullet: () => callCommand(wrapInBulletListCommand.key),
+  ordered: () => callCommand(wrapInOrderedListCommand.key),
+  quote: () => callCommand(wrapInBlockquoteCommand.key),
+  codeblock: () => callCommand(createCodeBlockCommand.key)
+};
+
 // Initialize the editor
 async function initEditor(content = defaultContent) {
   console.log('Initializing editor...');
@@ -79,6 +153,9 @@ async function initEditor(content = defaultContent) {
       root: '#editor',
       defaultValue: content,
     });
+
+    // Add custom plugin to fix ordered list numbering
+    crepe.editor.use(fixOrderedListPlugin);
 
     // Listen for updates
     crepe.on((listener) => {
@@ -292,59 +369,21 @@ function setupElectronListeners() {
 
   // Format commands
   window.electronAPI.onFormat((type) => {
-    if (isSourceMode) return;
-    if (!crepe) return;
-
-    switch (type) {
-      case 'bold':
-        crepe.action(callCommand(toggleStrongCommand.key));
-        break;
-      case 'italic':
-        crepe.action(callCommand(toggleEmphasisCommand.key));
-        break;
-      case 'strike':
-        crepe.action(callCommand(toggleStrikethroughCommand.key));
-        break;
-      case 'code':
-        crepe.action(callCommand(toggleInlineCodeCommand.key));
-        break;
-      case 'link':
-        crepe.action(callCommand(toggleLinkCommand.key));
-        break;
+    if (isSourceMode || !crepe) return;
+    const command = formatCommands[type];
+    if (command) {
+      const action = command();
+      if (action) crepe.action(action);
     }
   });
 
   // Paragraph commands
   window.electronAPI.onParagraph((type) => {
-    if (isSourceMode) return;
-    if (!crepe) return;
-
-    switch (type) {
-      case 'h1':
-        crepe.action(callCommand(wrapInHeadingCommand.key, 1));
-        break;
-      case 'h2':
-        crepe.action(callCommand(wrapInHeadingCommand.key, 2));
-        break;
-      case 'h3':
-        crepe.action(callCommand(wrapInHeadingCommand.key, 3));
-        break;
-      case 'paragraph':
-        // No direct turnIntoParagraph command easily available in this context
-        // Leaving empty for now
-        break;
-      case 'bullet':
-        crepe.action(callCommand(wrapInBulletListCommand.key));
-        break;
-      case 'ordered':
-        crepe.action(callCommand(wrapInOrderedListCommand.key));
-        break;
-      case 'quote':
-        crepe.action(callCommand(wrapInBlockquoteCommand.key));
-        break;
-      case 'codeblock':
-        crepe.action(callCommand(createCodeBlockCommand.key));
-        break;
+    if (isSourceMode || !crepe) return;
+    const command = paragraphCommands[type];
+    if (command) {
+      const action = command();
+      if (action) crepe.action(action);
     }
   });
 }

@@ -1,0 +1,95 @@
+/* Newsprint Theme - Classic print look */
+
+[data-theme="newsprint"] {
+  /* Colors */
+  --bg-primary: #f5f5f0;
+  --bg-secondary: #eaeae5;
+  --bg-sidebar: #eaeae5;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #6a6a6a;
+  --border-color: #c0c0b8;
+  --border-color-strong: #a0a098;
+  --accent-color: #1a1a1a;
+  --accent-hover: #333333;
+  --code-bg: #eaeae5;
+  --code-border: #c0c0b8;
+
+  /* Typography */
+  --font-body: Georgia, 'Times New Roman', Times, serif;
+  --font-size-base: 17px;
+  --line-height-base: 1.7;
+}
+
+/* Font overrides */
+[data-theme="newsprint"] .milkdown,
+[data-theme="newsprint"] .milkdown .ProseMirror,
+[data-theme="newsprint"] .milkdown p,
+[data-theme="newsprint"] .milkdown li,
+[data-theme="newsprint"] .milkdown h1,
+[data-theme="newsprint"] .milkdown h2,
+[data-theme="newsprint"] .milkdown h3,
+[data-theme="newsprint"] .milkdown h4,
+[data-theme="newsprint"] .milkdown h5,
+[data-theme="newsprint"] .milkdown h6 {
+  font-family: Georgia, 'Times New Roman', Times, serif !important;
+}
+
+[data-theme="newsprint"] .milkdown p,
+[data-theme="newsprint"] .milkdown li {
+  font-size: 17px !important;
+  line-height: 1.7 !important;
+}
+
+/* Heading borders */
+[data-theme="newsprint"] .milkdown h1,
+[data-theme="newsprint"] .milkdown h2 {
+  border-bottom: 1px solid #c0c0b8;
+}
+
+[data-theme="newsprint"] .milkdown h6 {
+  color: #6a6a6a;
+}
+
+/* Links */
+[data-theme="newsprint"] .milkdown a {
+  color: #1a1a1a;
+}
+
+/* Blockquotes */
+[data-theme="newsprint"] .milkdown blockquote {
+  border-left: 4px solid #c0c0b8;
+  color: #4a4a4a;
+}
+
+/* Code */
+[data-theme="newsprint"] .milkdown code {
+  background-color: #eaeae5;
+  border: 1px solid #c0c0b8;
+}
+
+[data-theme="newsprint"] .milkdown pre,
+[data-theme="newsprint"] .milkdown .md-fences {
+  background-color: #eaeae5;
+  border: 1px solid #c0c0b8;
+}
+
+/* Tables */
+[data-theme="newsprint"] .milkdown table tr {
+  border: 1px solid #c0c0b8;
+}
+
+[data-theme="newsprint"] .milkdown table tr:nth-child(2n),
+[data-theme="newsprint"] .milkdown thead {
+  background-color: #eaeae5;
+}
+
+[data-theme="newsprint"] .milkdown th,
+[data-theme="newsprint"] .milkdown td {
+  border: 1px solid #c0c0b8;
+}
+
+/* Horizontal rule */
+[data-theme="newsprint"] .milkdown hr {
+  background-color: #c0c0b8;
+}

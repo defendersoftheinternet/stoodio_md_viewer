@@ -1,0 +1,11 @@
+/* Theme Index - Import all available themes */
+/* Each theme defines its own [data-theme="name"] selector */
+
+@import './github.css';
+@import './github-dark.css';
+@import './sepia.css';
+@import './night.css';
+@import './newsprint.css';
+@import './gothic.css';
+@import './dracula.css';
+@import './solarized-light.css';

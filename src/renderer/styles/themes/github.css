@@ -1,0 +1,90 @@
+/* GitHub Theme - Light */
+/* Based on Typora's GitHub theme */
+
+[data-theme="github"] {
+  /* Colors */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f8f8;
+  --bg-sidebar: #fafafa;
+  --text-primary: #333333;
+  --text-secondary: #777777;
+  --text-muted: #777777;
+  --border-color: #eee;
+  --border-color-strong: #dfe2e5;
+  --accent-color: #4183C4;
+  --accent-hover: #3572a5;
+  --code-bg: #f3f4f4;
+  --code-border: #e7eaed;
+
+  /* Typography */
+  --font-body: 'Open Sans', 'Clear Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-size-base: 16px;
+  --line-height-base: 1.6;
+}
+
+/* Font overrides - must use !important to override Milkdown defaults */
+[data-theme="github"] .milkdown,
+[data-theme="github"] .milkdown .ProseMirror,
+[data-theme="github"] .milkdown p,
+[data-theme="github"] .milkdown li,
+[data-theme="github"] .milkdown h1,
+[data-theme="github"] .milkdown h2,
+[data-theme="github"] .milkdown h3,
+[data-theme="github"] .milkdown h4,
+[data-theme="github"] .milkdown h5,
+[data-theme="github"] .milkdown h6 {
+  font-family: 'Open Sans', 'Clear Sans', 'Helvetica Neue', Helvetica, Arial, 'Segoe UI Emoji', sans-serif !important;
+}
+
+/* Heading borders */
+[data-theme="github"] .milkdown h1,
+[data-theme="github"] .milkdown h2 {
+  border-bottom: 1px solid #eee;
+}
+
+[data-theme="github"] .milkdown h6 {
+  color: #777;
+}
+
+/* Links */
+[data-theme="github"] .milkdown a {
+  color: #4183C4;
+}
+
+/* Blockquotes */
+[data-theme="github"] .milkdown blockquote {
+  border-left: 4px solid #dfe2e5;
+  color: #777777;
+}
+
+/* Code */
+[data-theme="github"] .milkdown code {
+  background-color: #f3f4f4;
+  border: 1px solid #e7eaed;
+}
+
+[data-theme="github"] .milkdown pre,
+[data-theme="github"] .milkdown .md-fences {
+  background-color: #f8f8f8;
+  border: 1px solid #e7eaed;
+}
+
+/* Tables */
+[data-theme="github"] .milkdown table tr {
+  border: 1px solid #dfe2e5;
+}
+
+[data-theme="github"] .milkdown table tr:nth-child(2n),
+[data-theme="github"] .milkdown thead {
+  background-color: #f8f8f8;
+}
+
+[data-theme="github"] .milkdown th,
+[data-theme="github"] .milkdown td {
+  border: 1px solid #dfe2e5;
+}
+
+/* Horizontal rule */
+[data-theme="github"] .milkdown hr {
+  background-color: #e7e7e7;
+}

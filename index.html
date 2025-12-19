@@ -11,7 +11,47 @@
 <body>
   <div id="app">
     <header id="titlebar" class="titlebar">
-      <span id="filename" class="filename">Untitled</span>
+      <div id="filename-container" class="filename-container">
+        <span id="filename" class="filename">Untitled</span>
+        <svg class="filename-chevron" width="8" height="8" viewBox="0 0 8 8" fill="none">
+          <path d="M1 2.5L4 5.5L7 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"
+            stroke-linejoin="round" />
+        </svg>
+
+        <div id="filename-popover" class="filename-popover">
+          <div class="popover-arrow"></div>
+          <div class="popover-content">
+            <div class="popover-row">
+              <label for="document-name">Name:</label>
+              <input type="text" id="document-name" value="Untitled">
+            </div>
+            <div class="popover-row">
+              <label for="document-tags">Tags:</label>
+              <div class="tags-input-container">
+                <input type="text" id="document-tags" placeholder="Add Tags">
+              </div>
+            </div>
+            <div class="popover-row">
+              <label>Where:</label>
+              <div id="document-location" class="location-picker">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" style="color: #007aff;">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span id="location-text">Desktop — iCloud</span>
+                <svg width="10" height="10" viewBox="0 0 10 10" style="opacity: 0.5;">
+                  <path d="M3 4L5 6L7 4" stroke="currentColor" fill="none" stroke-width="1.2" />
+                </svg>
+              </div>
+              <div class="locked-container">
+                <input type="checkbox" id="document-locked">
+                <label for="document-locked">Locked</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <button id="toggle-source-btn" class="titlebar-btn" title="Toggle Source Code">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
@@ -21,10 +61,28 @@
       </button>
     </header>
     <aside id="sidebar" class="sidebar">
-      <div class="sidebar-header">
-        <h2>Outline</h2>
+      <div class="sidebar-tabs">
+        <button class="sidebar-tab active" data-tab="outline">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+          <span>Outline</span>
+        </button>
+        <button class="sidebar-tab" data-tab="files">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>Files</span>
+        </button>
       </div>
-      <nav id="outline" class="outline"></nav>
+      <nav id="outline" class="sidebar-panel outline active"></nav>
+      <div id="file-tree" class="sidebar-panel file-tree"></div>
+      <div id="sidebar-resizer" class="sidebar-resizer"></div>
     </aside>
     <main id="editor-container" class="editor-container">
       <div id="editor" spellcheck="false"></div>

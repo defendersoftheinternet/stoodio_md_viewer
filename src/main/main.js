@@ -347,6 +347,219 @@ ipcMain.on('document-modified', () => {
   updateWindowTitle();
 });
 
+ipcMain.handle('get-file-info', async () => {
+  if (!currentFilePath) {
+    return {
+      path: null,
+      name: 'Untitled.md',
+      directory: 'Desktop — iCloud',
+      isLocked: false
+    };
+  }
+
+  const stats = fs.statSync(currentFilePath);
+  const directory = path.dirname(currentFilePath);
+  const name = path.basename(currentFilePath);
+
+  // Simplified "macOS" path display
+  let displayDir = directory;
+  const homeDir = app.getPath('home');
+  if (directory.startsWith(homeDir)) {
+    displayDir = directory.replace(homeDir, '~');
+  }
+
+  return {
+    path: currentFilePath,
+    name: name,
+    directory: displayDir,
+    isLocked: false // We could check file permissions here if needed
+  };
+});
+
+ipcMain.handle('rename-file', async (event, newName) => {
+  if (!currentFilePath) {
+    // For unsaved files, we can just return success and let the renderer update the title
+    // The actual save will happen when they hit save
+    return { success: true, newName };
+  }
+
+  if (!newName.endsWith('.md')) {
+    newName += '.md';
+  }
+
+  const directory = path.dirname(currentFilePath);
+  const newPath = path.join(directory, newName);
+
+  if (newPath === currentFilePath) return { success: true, newPath, newName };
+
+  if (fs.existsSync(newPath)) {
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      buttons: ['Replace', 'Cancel'],
+      defaultId: 1,
+      message: `A file named "${newName}" already exists in this location. Do you want to replace it?`
+    });
+
+    if (result.response === 1) return { success: false, error: 'File already exists' };
+  }
+
+  try {
+    fs.renameSync(currentFilePath, newPath);
+    currentFilePath = newPath;
+    updateWindowTitle();
+    return { success: true, newPath, newName };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('move-file', async () => {
+  if (!currentFilePath) {
+    return { success: false, error: 'File must be saved first.' };
+  }
+
+  // Open directory picker
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory', 'createDirectory'],
+    buttonLabel: 'Move Here',
+    title: 'Move Document to Folder'
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, cancelled: true };
+  }
+
+  const targetDir = result.filePaths[0];
+  const fileName = path.basename(currentFilePath);
+  const newPath = path.join(targetDir, fileName);
+
+  if (newPath === currentFilePath) return { success: true, path: currentFilePath, directory: targetDir };
+
+  if (fs.existsSync(newPath)) {
+    const overwrite = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      buttons: ['Replace', 'Cancel'],
+      defaultId: 1,
+      message: `A file named "${fileName}" already exists in the destination folder. Do you want to replace it?`
+    });
+
+    if (overwrite.response === 1) return { success: false, cancelled: true };
+  }
+
+  try {
+    fs.renameSync(currentFilePath, newPath);
+    currentFilePath = newPath;
+    updateWindowTitle();
+
+    // Calculate display directory
+    let displayDir = targetDir;
+    const homeDir = app.getPath('home');
+    if (targetDir.startsWith(homeDir)) {
+      displayDir = targetDir.replace(homeDir, '~');
+    }
+
+    return { success: true, path: newPath, directory: displayDir };
+  } catch (err) {
+    dialog.showErrorBox('Move Failed', err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// Get directory contents for file tree
+ipcMain.handle('get-directory-contents', async () => {
+  if (!currentFilePath) {
+    return { success: false, error: 'No file open', items: [] };
+  }
+
+  const directory = path.dirname(currentFilePath);
+  const currentFileName = path.basename(currentFilePath);
+
+  try {
+    const entries = fs.readdirSync(directory, { withFileTypes: true });
+    const items = [];
+
+    for (const entry of entries) {
+      // Skip hidden files and non-markdown files (for files)
+      if (entry.name.startsWith('.')) continue;
+
+      if (entry.isDirectory()) {
+        // Get markdown files in subdirectory
+        const subItems = getMarkdownFilesInDir(path.join(directory, entry.name));
+        if (subItems.length > 0) {
+          items.push({
+            name: entry.name,
+            type: 'folder',
+            path: path.join(directory, entry.name),
+            children: subItems
+          });
+        }
+      } else if (isMarkdownFile(entry.name)) {
+        items.push({
+          name: entry.name,
+          type: 'file',
+          path: path.join(directory, entry.name),
+          isActive: entry.name === currentFileName
+        });
+      }
+    }
+
+    // Sort: folders first, then files, alphabetically
+    items.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return { success: true, directory, items };
+  } catch (err) {
+    return { success: false, error: err.message, items: [] };
+  }
+});
+
+// Helper: Check if file is markdown
+function isMarkdownFile(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  return ['.md', '.markdown', '.mdown', '.mkd'].includes(ext);
+}
+
+// Helper: Get markdown files in a directory (one level deep)
+function getMarkdownFilesInDir(dirPath) {
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    const files = [];
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      if (entry.isFile() && isMarkdownFile(entry.name)) {
+        files.push({
+          name: entry.name,
+          type: 'file',
+          path: path.join(dirPath, entry.name)
+        });
+      }
+    }
+
+    files.sort((a, b) => a.name.localeCompare(b.name));
+    return files;
+  } catch {
+    return [];
+  }
+}
+
+// Open a file from file tree
+ipcMain.handle('open-file-from-tree', async (event, filePath) => {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    currentFilePath = filePath;
+    isDocumentModified = false;
+    mainWindow?.webContents.send('file-opened', { path: filePath, content });
+    updateWindowTitle();
+    return { success: true };
+  } catch (err) {
+    dialog.showErrorBox('Error', `Failed to open file: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+});
+
 // Theme handling
 function setTheme(themeName) {
   currentTheme = themeName;

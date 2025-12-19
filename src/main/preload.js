@@ -23,6 +23,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onThemeChange: (callback) => ipcRenderer.on('theme-change', (event, themeName) => callback(themeName)),
   sendCurrentTheme: (themeName) => ipcRenderer.send('current-theme', themeName),
 
+  // File operations
+  renameFile: (newName) => ipcRenderer.invoke('rename-file', newName),
+  moveFile: () => ipcRenderer.invoke('move-file'),
+  getFileInfo: () => ipcRenderer.invoke('get-file-info'),
+
+  // File tree
+  getDirectoryContents: () => ipcRenderer.invoke('get-directory-contents'),
+  openFileFromTree: (filePath) => ipcRenderer.invoke('open-file-from-tree', filePath),
+
   // Remove listeners
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
 });

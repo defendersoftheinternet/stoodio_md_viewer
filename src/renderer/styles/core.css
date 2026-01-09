@@ -350,6 +350,177 @@ body {
 }
 
 /* ============================================
+   FIND & REPLACE PANEL
+   ============================================ */
+
+.find-replace-panel {
+  display: none;
+  position: fixed;
+  top: calc(var(--titlebar-height) + 8px);
+  right: 24px;
+  z-index: 200;
+  background: rgba(250, 250, 250, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  padding: 8px 12px;
+  min-width: 320px;
+}
+
+.find-replace-panel.show {
+  display: block;
+}
+
+.find-replace-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.find-row,
+.replace-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.find-input {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  outline: none;
+  min-width: 0;
+  color: var(--text-primary);
+}
+
+.find-input:focus {
+  border-color: #6fb6ff;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+
+.find-count {
+  font-size: 11px;
+  color: #666;
+  min-width: 40px;
+  text-align: center;
+}
+
+.find-btn {
+  background: transparent;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.find-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #333;
+}
+
+.find-btn:active {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.find-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.find-btn-text {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.find-close {
+  margin-left: 4px;
+}
+
+.find-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.find-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+  user-select: none;
+}
+
+.find-option input {
+  margin: 0;
+}
+
+/* Dark theme overrides for find panel */
+[data-theme="github-dark"] .find-replace-panel,
+[data-theme="night"] .find-replace-panel,
+[data-theme="dracula"] .find-replace-panel {
+  background: rgba(45, 45, 45, 0.95);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="github-dark"] .find-input,
+[data-theme="night"] .find-input,
+[data-theme="dracula"] .find-input {
+  background: #1e1e1e;
+  border-color: #444;
+  color: #fff;
+}
+
+[data-theme="github-dark"] .find-btn,
+[data-theme="night"] .find-btn,
+[data-theme="dracula"] .find-btn {
+  color: #aaa;
+}
+
+[data-theme="github-dark"] .find-btn:hover,
+[data-theme="night"] .find-btn:hover,
+[data-theme="dracula"] .find-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+[data-theme="github-dark"] .find-count,
+[data-theme="night"] .find-count,
+[data-theme="dracula"] .find-count {
+  color: #888;
+}
+
+[data-theme="github-dark"] .find-option,
+[data-theme="night"] .find-option,
+[data-theme="dracula"] .find-option {
+  color: #aaa;
+}
+
+/* Search highlight styling */
+.find-highlight {
+  background-color: rgba(255, 235, 59, 0.5);
+  border-radius: 2px;
+}
+
+.find-highlight-current {
+  background-color: rgba(255, 152, 0, 0.7);
+  border-radius: 2px;
+}
+
+/* ============================================
    SIDEBAR
    ============================================ */
 
@@ -534,6 +705,13 @@ body {
   font-style: italic;
 }
 
+.file-tree-empty-folder {
+  padding: 6px 12px 6px 32px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
 .file-tree-item {
   display: flex;
   align-items: center;
@@ -590,12 +768,25 @@ body {
   display: block;
 }
 
-.file-tree-folder-contents .file-tree-item {
-  padding-left: 28px;
+/* Nested indentation levels */
+.file-tree-folder-contents > .file-tree-item,
+.file-tree-folder-contents > .file-tree-folder > .file-tree-item {
+  padding-left: 32px;
 }
 
-.file-tree-folder-contents .file-tree-folder-contents .file-tree-item {
-  padding-left: 44px;
+.file-tree-folder-contents .file-tree-folder-contents > .file-tree-item,
+.file-tree-folder-contents .file-tree-folder-contents > .file-tree-folder > .file-tree-item {
+  padding-left: 48px;
+}
+
+.file-tree-folder-contents .file-tree-folder-contents .file-tree-folder-contents > .file-tree-item,
+.file-tree-folder-contents .file-tree-folder-contents .file-tree-folder-contents > .file-tree-folder > .file-tree-item {
+  padding-left: 64px;
+}
+
+.file-tree-folder-contents .file-tree-folder-contents .file-tree-folder-contents .file-tree-folder-contents > .file-tree-item,
+.file-tree-folder-contents .file-tree-folder-contents .file-tree-folder-contents .file-tree-folder-contents > .file-tree-folder > .file-tree-item {
+  padding-left: 80px;
 }
 
 /* Folder chevron */

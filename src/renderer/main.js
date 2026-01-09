@@ -113,6 +113,11 @@ let isSourceMode = false;
 let isPopoverOpen = false;
 let currentSidebarTab = 'outline';
 
+// Find & Replace state
+let isFindPanelOpen = false;
+let findMatches = [];
+let currentMatchIndex = -1;
+
 // File tree icons (SVG)
 const folderIcon = `<svg class="file-tree-icon folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -329,7 +334,34 @@ async function refreshFileTree() {
   }
 }
 
-// Render file tree items recursively
+// Update active file highlight without refreshing the tree
+function updateActiveFileInTree(filePath) {
+  const fileTreeEl = document.getElementById('file-tree');
+  if (!fileTreeEl) return;
+
+  // Remove active class from all items
+  fileTreeEl.querySelectorAll('.file-tree-item.active').forEach(item => {
+    item.classList.remove('active');
+  });
+
+  // Find and highlight the new active file
+  const activeItem = fileTreeEl.querySelector(`.file-tree-item[data-path="${CSS.escape(filePath)}"]`);
+  if (activeItem) {
+    activeItem.classList.add('active');
+
+    // Auto-expand parent folders to show the active file
+    let parent = activeItem.closest('.file-tree-folder-contents');
+    while (parent) {
+      const folder = parent.closest('.file-tree-folder');
+      if (folder && !folder.classList.contains('expanded')) {
+        folder.classList.add('expanded');
+      }
+      parent = folder?.parentElement?.closest('.file-tree-folder-contents');
+    }
+  }
+}
+
+// Render file tree items (folders load contents on demand)
 function renderFileTreeItems(items) {
   return items.map(item => {
     if (item.type === 'folder') {
@@ -340,9 +372,7 @@ function renderFileTreeItems(items) {
             ${folderIcon}
             <span class="file-tree-name">${escapeHtml(item.name)}</span>
           </div>
-          <div class="file-tree-folder-contents">
-            ${item.children ? renderFileTreeItems(item.children) : ''}
-          </div>
+          <div class="file-tree-folder-contents"></div>
         </div>
       `;
     } else {
@@ -368,18 +398,91 @@ function attachFileTreeListeners() {
       const filePath = item.dataset.path;
       if (filePath && window.electronAPI) {
         await window.electronAPI.openFileFromTree(filePath);
-        // Refresh to update active state
-        setTimeout(refreshFileTree, 100);
+        // Active state is updated via file-opened event
       }
     });
   });
 
-  // Folder clicks (toggle expand)
+  // Folder clicks (toggle expand and load contents on demand)
   fileTreeEl.querySelectorAll('.file-tree-folder > .file-tree-item').forEach(item => {
-    item.addEventListener('click', (e) => {
+    item.addEventListener('click', async (e) => {
       e.stopPropagation();
       const folder = item.closest('.file-tree-folder');
-      folder?.classList.toggle('expanded');
+      if (!folder) return;
+
+      const isExpanded = folder.classList.contains('expanded');
+
+      if (!isExpanded) {
+        // Expanding - load contents if not already loaded
+        const contentsEl = folder.querySelector('.file-tree-folder-contents');
+        if (contentsEl && !contentsEl.dataset.loaded && window.electronAPI) {
+          const folderPath = folder.dataset.path;
+          try {
+            const result = await window.electronAPI.getFolderContents(folderPath);
+            if (result.success && result.items.length > 0) {
+              contentsEl.innerHTML = renderFileTreeItems(result.items);
+              contentsEl.dataset.loaded = 'true';
+              // Attach listeners to newly added items
+              attachFolderContentListeners(contentsEl);
+            } else {
+              contentsEl.innerHTML = '<div class="file-tree-empty-folder">Empty</div>';
+              contentsEl.dataset.loaded = 'true';
+            }
+          } catch (err) {
+            console.error('Failed to load folder contents:', err);
+          }
+        }
+      }
+
+      folder.classList.toggle('expanded');
+    });
+  });
+}
+
+// Attach listeners to dynamically loaded folder contents
+function attachFolderContentListeners(contentsEl) {
+  // File clicks
+  contentsEl.querySelectorAll(':scope > .file-tree-item[data-path]').forEach(item => {
+    item.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const filePath = item.dataset.path;
+      if (filePath && window.electronAPI) {
+        await window.electronAPI.openFileFromTree(filePath);
+        // Active state is updated via file-opened event
+      }
+    });
+  });
+
+  // Folder clicks
+  contentsEl.querySelectorAll(':scope > .file-tree-folder > .file-tree-item').forEach(item => {
+    item.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const folder = item.closest('.file-tree-folder');
+      if (!folder) return;
+
+      const isExpanded = folder.classList.contains('expanded');
+
+      if (!isExpanded) {
+        const innerContentsEl = folder.querySelector('.file-tree-folder-contents');
+        if (innerContentsEl && !innerContentsEl.dataset.loaded && window.electronAPI) {
+          const folderPath = folder.dataset.path;
+          try {
+            const result = await window.electronAPI.getFolderContents(folderPath);
+            if (result.success && result.items.length > 0) {
+              innerContentsEl.innerHTML = renderFileTreeItems(result.items);
+              innerContentsEl.dataset.loaded = 'true';
+              attachFolderContentListeners(innerContentsEl);
+            } else {
+              innerContentsEl.innerHTML = '<div class="file-tree-empty-folder">Empty</div>';
+              innerContentsEl.dataset.loaded = 'true';
+            }
+          } catch (err) {
+            console.error('Failed to load folder contents:', err);
+          }
+        }
+      }
+
+      folder.classList.toggle('expanded');
     });
   });
 }
@@ -436,6 +539,355 @@ function toggleSourceMode(enable) {
   }
 }
 
+// Generate HTML for export
+function generateExportHTML() {
+  const editorEl = document.querySelector('.milkdown .ProseMirror');
+  if (!editorEl) return '';
+
+  const contentHTML = editorEl.innerHTML;
+
+  // Get computed styles from current theme
+  const computedStyles = getComputedStyle(document.documentElement);
+
+  // Build inline CSS
+  const themeCSS = `
+    body {
+      font-family: ${computedStyles.getPropertyValue('--font-body') || '-apple-system, BlinkMacSystemFont, sans-serif'};
+      font-size: ${computedStyles.getPropertyValue('--font-size-base') || '16px'};
+      line-height: ${computedStyles.getPropertyValue('--line-height-base') || '1.6'};
+      color: ${computedStyles.getPropertyValue('--text-primary') || '#333'};
+      background: ${computedStyles.getPropertyValue('--bg-primary') || '#fff'};
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 40px;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      font-weight: bold;
+      margin: 1.5em 0 0.5em 0;
+      color: ${computedStyles.getPropertyValue('--text-primary') || '#333'};
+    }
+    h1 { font-size: 2.25em; border-bottom: 1px solid ${computedStyles.getPropertyValue('--border-color') || '#eee'}; padding-bottom: 0.3em; }
+    h2 { font-size: 1.75em; border-bottom: 1px solid ${computedStyles.getPropertyValue('--border-color') || '#eee'}; padding-bottom: 0.3em; }
+    h3 { font-size: 1.5em; }
+    h4 { font-size: 1.25em; }
+    a { color: ${computedStyles.getPropertyValue('--accent-color') || '#4183C4'}; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      background: ${computedStyles.getPropertyValue('--code-bg') || '#f3f4f4'};
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-family: ${computedStyles.getPropertyValue('--font-mono') || 'monospace'};
+    }
+    pre {
+      background: ${computedStyles.getPropertyValue('--bg-secondary') || '#f6f8fa'};
+      padding: 16px;
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+    pre code { background: none; padding: 0; }
+    blockquote {
+      border-left: 4px solid ${computedStyles.getPropertyValue('--border-color-strong') || '#ddd'};
+      padding-left: 16px;
+      margin: 1em 0;
+      color: ${computedStyles.getPropertyValue('--text-secondary') || '#666'};
+    }
+    table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+    th, td {
+      border: 1px solid ${computedStyles.getPropertyValue('--border-color-strong') || '#ddd'};
+      padding: 8px 12px;
+    }
+    th { background: ${computedStyles.getPropertyValue('--bg-secondary') || '#f6f8fa'}; }
+    hr { border: none; height: 2px; background: ${computedStyles.getPropertyValue('--border-color') || '#eee'}; margin: 2em 0; }
+    ul, ol { padding-left: 2em; }
+    li { margin: 0.25em 0; }
+    img { max-width: 100%; height: auto; }
+  `;
+
+  const fileName = document.getElementById('filename')?.textContent || 'Untitled';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(fileName)}</title>
+  <style>
+${themeCSS}
+  </style>
+</head>
+<body>
+${contentHTML}
+</body>
+</html>`;
+}
+
+// Find & Replace functions
+function showFindPanel(showReplace = false) {
+  const panel = document.getElementById('find-replace-panel');
+  const replaceRow = document.getElementById('replace-row');
+  const findInput = document.getElementById('find-input');
+
+  if (!panel) return;
+
+  panel.classList.add('show');
+  isFindPanelOpen = true;
+
+  // Show/hide replace row
+  if (replaceRow) {
+    replaceRow.style.display = showReplace ? 'flex' : 'none';
+  }
+
+  // Focus find input
+  setTimeout(() => {
+    findInput?.focus();
+    findInput?.select();
+  }, 50);
+
+  // If there's selected text, use it as search term
+  if (crepe) {
+    const selection = window.getSelection();
+    if (selection && selection.toString().trim()) {
+      findInput.value = selection.toString().trim();
+      performFind();
+    }
+  }
+}
+
+function hideFindPanel() {
+  const panel = document.getElementById('find-replace-panel');
+  if (panel) {
+    panel.classList.remove('show');
+  }
+  isFindPanelOpen = false;
+  clearFindHighlights();
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function performFind() {
+  const findInput = document.getElementById('find-input');
+  const matchCase = document.getElementById('find-match-case')?.checked || false;
+  const searchTerm = findInput?.value || '';
+
+  clearFindHighlights();
+  findMatches = [];
+  currentMatchIndex = -1;
+
+  if (!searchTerm || !crepe) {
+    updateFindCount();
+    return;
+  }
+
+  const editorEl = document.querySelector('.milkdown .ProseMirror');
+  if (!editorEl) return;
+
+  // Use TreeWalker to find text matches
+  const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, null, false);
+  const textNodes = [];
+
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode);
+  }
+
+  const searchFlags = matchCase ? 'g' : 'gi';
+  const regex = new RegExp(escapeRegExp(searchTerm), searchFlags);
+
+  textNodes.forEach(node => {
+    const text = node.textContent;
+    let match;
+    regex.lastIndex = 0; // Reset regex state
+
+    while ((match = regex.exec(text)) !== null) {
+      findMatches.push({
+        node: node,
+        start: match.index,
+        end: match.index + match[0].length,
+        text: match[0]
+      });
+    }
+  });
+
+  if (findMatches.length > 0) {
+    currentMatchIndex = 0;
+    highlightMatches();
+    scrollToCurrentMatch();
+  }
+
+  updateFindCount();
+}
+
+function highlightMatches() {
+  // Process matches in reverse order to avoid position shifts
+  const sortedMatches = [...findMatches].sort((a, b) => {
+    if (a.node !== b.node) return 0;
+    return b.start - a.start;
+  });
+
+  sortedMatches.forEach((match, index) => {
+    const originalIndex = findMatches.indexOf(match);
+    try {
+      const range = document.createRange();
+      range.setStart(match.node, match.start);
+      range.setEnd(match.node, match.end);
+
+      const highlight = document.createElement('mark');
+      highlight.className = originalIndex === currentMatchIndex ? 'find-highlight-current' : 'find-highlight';
+      highlight.dataset.findIndex = originalIndex;
+
+      range.surroundContents(highlight);
+      match.highlightElement = highlight;
+    } catch (e) {
+      console.warn('Could not highlight match:', e);
+    }
+  });
+}
+
+function clearFindHighlights() {
+  document.querySelectorAll('.find-highlight, .find-highlight-current').forEach(el => {
+    const parent = el.parentNode;
+    while (el.firstChild) {
+      parent.insertBefore(el.firstChild, el);
+    }
+    parent.removeChild(el);
+  });
+  // Normalize text nodes
+  document.querySelector('.milkdown .ProseMirror')?.normalize();
+}
+
+function updateFindCount() {
+  const countEl = document.getElementById('find-count');
+  if (!countEl) return;
+
+  if (findMatches.length === 0) {
+    countEl.textContent = '0/0';
+  } else {
+    countEl.textContent = `${currentMatchIndex + 1}/${findMatches.length}`;
+  }
+}
+
+function findNext() {
+  if (findMatches.length === 0) return;
+
+  // Remove current highlight
+  if (findMatches[currentMatchIndex]?.highlightElement) {
+    findMatches[currentMatchIndex].highlightElement.className = 'find-highlight';
+  }
+
+  currentMatchIndex = (currentMatchIndex + 1) % findMatches.length;
+
+  // Add current highlight
+  if (findMatches[currentMatchIndex]?.highlightElement) {
+    findMatches[currentMatchIndex].highlightElement.className = 'find-highlight-current';
+  }
+
+  scrollToCurrentMatch();
+  updateFindCount();
+}
+
+function findPrevious() {
+  if (findMatches.length === 0) return;
+
+  // Remove current highlight
+  if (findMatches[currentMatchIndex]?.highlightElement) {
+    findMatches[currentMatchIndex].highlightElement.className = 'find-highlight';
+  }
+
+  currentMatchIndex = (currentMatchIndex - 1 + findMatches.length) % findMatches.length;
+
+  // Add current highlight
+  if (findMatches[currentMatchIndex]?.highlightElement) {
+    findMatches[currentMatchIndex].highlightElement.className = 'find-highlight-current';
+  }
+
+  scrollToCurrentMatch();
+  updateFindCount();
+}
+
+function scrollToCurrentMatch() {
+  if (currentMatchIndex < 0 || !findMatches[currentMatchIndex]?.highlightElement) return;
+
+  findMatches[currentMatchIndex].highlightElement.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center'
+  });
+}
+
+function replaceCurrent() {
+  if (currentMatchIndex < 0 || findMatches.length === 0) return;
+
+  const replaceInput = document.getElementById('replace-input');
+  const replaceWith = replaceInput?.value || '';
+  const match = findMatches[currentMatchIndex];
+
+  if (!match?.highlightElement) return;
+
+  // Replace the text content
+  match.highlightElement.textContent = replaceWith;
+
+  // Remove highlight wrapper
+  const parent = match.highlightElement.parentNode;
+  while (match.highlightElement.firstChild) {
+    parent.insertBefore(match.highlightElement.firstChild, match.highlightElement);
+  }
+  parent.removeChild(match.highlightElement);
+  parent.normalize();
+
+  // Notify document modified
+  if (window.electronAPI) {
+    window.electronAPI.documentModified();
+  }
+
+  // Re-run find to update matches
+  performFind();
+}
+
+function replaceAll() {
+  const findInput = document.getElementById('find-input');
+  const replaceInput = document.getElementById('replace-input');
+  const matchCase = document.getElementById('find-match-case')?.checked || false;
+  const searchTerm = findInput?.value || '';
+  const replaceWith = replaceInput?.value || '';
+
+  if (!searchTerm || !crepe) return;
+
+  // Get current markdown, perform replace, set content
+  const markdown = crepe.getMarkdown();
+  const searchFlags = matchCase ? 'g' : 'gi';
+  const regex = new RegExp(escapeRegExp(searchTerm), searchFlags);
+  const newMarkdown = markdown.replace(regex, replaceWith);
+
+  if (newMarkdown !== markdown) {
+    // Reinitialize editor with new content
+    initEditor(newMarkdown);
+
+    // Notify document modified
+    if (window.electronAPI) {
+      window.electronAPI.documentModified();
+    }
+  }
+
+  // Clear find state
+  clearFindHighlights();
+  findMatches = [];
+  currentMatchIndex = -1;
+  updateFindCount();
+}
+
+// Debounce helper
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
 // Set up IPC listeners for Electron
 function setupElectronListeners() {
   if (!window.electronAPI) {
@@ -453,6 +905,17 @@ function setupElectronListeners() {
   window.electronAPI.onFileOpened((data) => {
     initEditor(data.content);
     updateFilename(data.path);
+
+    // Handle file tree updates
+    if (data.isNewRoot) {
+      // New root folder - refresh entire file tree
+      if (currentSidebarTab === 'files') {
+        refreshFileTree();
+      }
+    } else {
+      // Same root - just update active file highlight
+      updateActiveFileInTree(data.path);
+    }
   });
 
   // Request content for save
@@ -498,6 +961,44 @@ function setupElectronListeners() {
     if (command) {
       const action = command();
       if (action) crepe.action(action);
+    }
+  });
+
+  // Export - prepare for export (exit source mode if needed)
+  window.electronAPI.onPrepareForExport?.(() => {
+    if (isSourceMode) {
+      toggleSourceMode(false);
+    }
+  });
+
+  // Export - generate HTML
+  window.electronAPI.onRequestHtmlExport?.(() => {
+    const html = generateExportHTML();
+    window.electronAPI.sendHtmlExport(html);
+  });
+
+  // Find & Replace
+  window.electronAPI.onFind?.(() => {
+    showFindPanel(false);
+  });
+
+  window.electronAPI.onFindReplace?.(() => {
+    showFindPanel(true);
+  });
+
+  window.electronAPI.onFindNext?.(() => {
+    if (isFindPanelOpen) {
+      findNext();
+    } else {
+      showFindPanel(false);
+    }
+  });
+
+  window.electronAPI.onFindPrevious?.(() => {
+    if (isFindPanelOpen) {
+      findPrevious();
+    } else {
+      showFindPanel(false);
     }
   });
 }
@@ -667,6 +1168,63 @@ document.addEventListener('DOMContentLoaded', () => {
         const locationText = document.getElementById('location-text');
         if (locationText) locationText.textContent = result.directory;
       }
+    }
+  });
+
+  // Find & Replace panel listeners
+  const findInput = document.getElementById('find-input');
+  const replaceInput = document.getElementById('replace-input');
+  const matchCaseCheckbox = document.getElementById('find-match-case');
+  const findPrevBtn = document.getElementById('find-prev-btn');
+  const findNextBtn = document.getElementById('find-next-btn');
+  const findCloseBtn = document.getElementById('find-close-btn');
+  const replaceBtn = document.getElementById('replace-btn');
+  const replaceAllBtn = document.getElementById('replace-all-btn');
+
+  // Find input changes
+  const debouncedFind = debounce(performFind, 150);
+  findInput?.addEventListener('input', debouncedFind);
+
+  // Match case toggle
+  matchCaseCheckbox?.addEventListener('change', performFind);
+
+  // Navigation buttons
+  findPrevBtn?.addEventListener('click', findPrevious);
+  findNextBtn?.addEventListener('click', findNext);
+  findCloseBtn?.addEventListener('click', hideFindPanel);
+
+  // Replace buttons
+  replaceBtn?.addEventListener('click', replaceCurrent);
+  replaceAllBtn?.addEventListener('click', replaceAll);
+
+  // Keyboard shortcuts in find input
+  findInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      if (e.shiftKey) {
+        findPrevious();
+      } else {
+        findNext();
+      }
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      hideFindPanel();
+    }
+  });
+
+  // Keyboard shortcuts in replace input
+  replaceInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      replaceCurrent();
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      hideFindPanel();
+    }
+  });
+
+  // Global escape to close find panel
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isFindPanelOpen) {
+      hideFindPanel();
     }
   });
 });

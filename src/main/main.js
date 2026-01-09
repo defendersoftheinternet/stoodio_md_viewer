@@ -5,8 +5,13 @@ const { defaultTheme, buildThemeMenuItems } = require('./themes');
 
 let mainWindow;
 let currentFilePath = null;
+let rootFolderPath = null; // Root folder for file tree (set on first file open)
 let isDocumentModified = false;
 let currentTheme = defaultTheme;
+
+// Recent files
+const recentFilesPath = path.join(app.getPath('userData'), 'recent-files.json');
+let recentFiles = []; // Array of { path, name, timestamp }
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -86,6 +91,27 @@ function buildMenuTemplate() {
           accelerator: 'CmdOrCtrl+O',
           click: () => openDocument()
         },
+        {
+          label: 'Open Recent',
+          submenu: recentFiles.length > 0
+            ? [
+                ...recentFiles.map(file => ({
+                  label: file.name,
+                  click: () => openRecentFile(file.path)
+                })),
+                { type: 'separator' },
+                {
+                  label: 'Clear Recent',
+                  click: () => clearRecentFiles()
+                }
+              ]
+            : [
+                {
+                  label: 'No Recent Files',
+                  enabled: false
+                }
+              ]
+        },
         { type: 'separator' },
         {
           label: 'Save',
@@ -96,6 +122,25 @@ function buildMenuTemplate() {
           label: 'Save As...',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => saveDocumentAs()
+        },
+        { type: 'separator' },
+        {
+          label: 'Export',
+          submenu: [
+            {
+              label: 'PDF...',
+              click: () => exportToPDF()
+            },
+            {
+              label: 'HTML...',
+              click: () => exportToHTML()
+            }
+          ]
+        },
+        {
+          label: 'Print...',
+          accelerator: 'CmdOrCtrl+P',
+          click: () => printDocument()
         },
         { type: 'separator' },
         { role: 'close' }
@@ -113,9 +158,30 @@ function buildMenuTemplate() {
         { role: 'selectAll' },
         { type: 'separator' },
         {
-          label: 'Find...',
-          accelerator: 'CmdOrCtrl+F',
-          click: () => mainWindow?.webContents.send('find')
+          label: 'Find',
+          submenu: [
+            {
+              label: 'Find...',
+              accelerator: 'CmdOrCtrl+F',
+              click: () => mainWindow?.webContents.send('find')
+            },
+            {
+              label: 'Find and Replace...',
+              accelerator: 'CmdOrCtrl+H',
+              click: () => mainWindow?.webContents.send('find-replace')
+            },
+            { type: 'separator' },
+            {
+              label: 'Find Next',
+              accelerator: 'CmdOrCtrl+G',
+              click: () => mainWindow?.webContents.send('find-next')
+            },
+            {
+              label: 'Find Previous',
+              accelerator: 'CmdOrCtrl+Shift+G',
+              click: () => mainWindow?.webContents.send('find-previous')
+            }
+          ]
         }
       ]
     },
@@ -297,9 +363,12 @@ async function openDocument() {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       currentFilePath = filePath;
+      // Set root folder on first file open (File > Open always resets root)
+      rootFolderPath = path.dirname(filePath);
       isDocumentModified = false;
-      mainWindow?.webContents.send('file-opened', { path: filePath, content });
+      mainWindow?.webContents.send('file-opened', { path: filePath, content, isNewRoot: true });
       updateWindowTitle();
+      addToRecentFiles(filePath);
     } catch (err) {
       dialog.showErrorBox('Error', `Failed to open file: ${err.message}`);
     }
@@ -329,6 +398,66 @@ async function saveDocumentAs() {
   }
 }
 
+// Export functions
+let pendingExportPath = null;
+
+async function exportToPDF() {
+  const defaultName = currentFilePath
+    ? path.basename(currentFilePath, '.md') + '.pdf'
+    : 'Untitled.pdf';
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultName,
+    filters: [{ name: 'PDF', extensions: ['pdf'] }]
+  });
+
+  if (result.canceled || !result.filePath) return;
+
+  try {
+    // Request renderer to prepare for export (exit source mode if needed)
+    mainWindow.webContents.send('prepare-for-export');
+
+    // Small delay to ensure rendering is complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    const pdfData = await mainWindow.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+      margins: {
+        top: 1,
+        bottom: 1,
+        left: 0.75,
+        right: 0.75
+      }
+    });
+
+    fs.writeFileSync(result.filePath, pdfData);
+    shell.showItemInFolder(result.filePath);
+  } catch (err) {
+    dialog.showErrorBox('Export Failed', `Failed to export PDF: ${err.message}`);
+  }
+}
+
+async function exportToHTML() {
+  const defaultName = currentFilePath
+    ? path.basename(currentFilePath, '.md') + '.html'
+    : 'Untitled.html';
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultName,
+    filters: [{ name: 'HTML', extensions: ['html', 'htm'] }]
+  });
+
+  if (result.canceled || !result.filePath) return;
+
+  pendingExportPath = result.filePath;
+  mainWindow.webContents.send('request-html-export');
+}
+
+function printDocument() {
+  mainWindow.webContents.print({ printBackground: true });
+}
+
 // IPC handlers
 ipcMain.on('content-for-save', (event, content) => {
   if (currentFilePath) {
@@ -340,6 +469,19 @@ ipcMain.on('content-for-save', (event, content) => {
       dialog.showErrorBox('Error', `Failed to save file: ${err.message}`);
     }
   }
+});
+
+ipcMain.on('html-export-content', (event, htmlContent) => {
+  if (!pendingExportPath) return;
+
+  try {
+    fs.writeFileSync(pendingExportPath, htmlContent, 'utf-8');
+    shell.showItemInFolder(pendingExportPath);
+  } catch (err) {
+    dialog.showErrorBox('Export Failed', `Failed to export HTML: ${err.message}`);
+  }
+
+  pendingExportPath = null;
 });
 
 ipcMain.on('document-modified', () => {
@@ -465,51 +607,25 @@ ipcMain.handle('move-file', async () => {
   }
 });
 
-// Get directory contents for file tree
+// Get directory contents for file tree (always from root folder)
 ipcMain.handle('get-directory-contents', async () => {
-  if (!currentFilePath) {
-    return { success: false, error: 'No file open', items: [] };
+  if (!rootFolderPath) {
+    return { success: false, error: 'No root folder set', items: [] };
   }
 
-  const directory = path.dirname(currentFilePath);
-  const currentFileName = path.basename(currentFilePath);
-
   try {
-    const entries = fs.readdirSync(directory, { withFileTypes: true });
-    const items = [];
+    const items = getDirectoryItems(rootFolderPath, currentFilePath);
+    return { success: true, directory: rootFolderPath, currentFilePath, items };
+  } catch (err) {
+    return { success: false, error: err.message, items: [] };
+  }
+});
 
-    for (const entry of entries) {
-      // Skip hidden files and non-markdown files (for files)
-      if (entry.name.startsWith('.')) continue;
-
-      if (entry.isDirectory()) {
-        // Get markdown files in subdirectory
-        const subItems = getMarkdownFilesInDir(path.join(directory, entry.name));
-        if (subItems.length > 0) {
-          items.push({
-            name: entry.name,
-            type: 'folder',
-            path: path.join(directory, entry.name),
-            children: subItems
-          });
-        }
-      } else if (isMarkdownFile(entry.name)) {
-        items.push({
-          name: entry.name,
-          type: 'file',
-          path: path.join(directory, entry.name),
-          isActive: entry.name === currentFileName
-        });
-      }
-    }
-
-    // Sort: folders first, then files, alphabetically
-    items.sort((a, b) => {
-      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    return { success: true, directory, items };
+// Get folder contents on demand (when user expands a folder)
+ipcMain.handle('get-folder-contents', async (event, folderPath) => {
+  try {
+    const items = getDirectoryItems(folderPath, currentFilePath);
+    return { success: true, items };
   } catch (err) {
     return { success: false, error: err.message, items: [] };
   }
@@ -521,39 +637,57 @@ function isMarkdownFile(filename) {
   return ['.md', '.markdown', '.mdown', '.mkd'].includes(ext);
 }
 
-// Helper: Get markdown files in a directory (one level deep)
-function getMarkdownFilesInDir(dirPath) {
+// Helper: Get directory items (single level, no recursion)
+function getDirectoryItems(dirPath, currentFilePath) {
   try {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-    const files = [];
+    const items = [];
 
     for (const entry of entries) {
+      // Skip hidden files/folders
       if (entry.name.startsWith('.')) continue;
-      if (entry.isFile() && isMarkdownFile(entry.name)) {
-        files.push({
+
+      const fullPath = path.join(dirPath, entry.name);
+
+      if (entry.isDirectory()) {
+        items.push({
+          name: entry.name,
+          type: 'folder',
+          path: fullPath
+        });
+      } else if (isMarkdownFile(entry.name)) {
+        items.push({
           name: entry.name,
           type: 'file',
-          path: path.join(dirPath, entry.name)
+          path: fullPath,
+          isActive: fullPath === currentFilePath
         });
       }
     }
 
-    files.sort((a, b) => a.name.localeCompare(b.name));
-    return files;
+    // Sort: folders first, then files, alphabetically
+    items.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return items;
   } catch {
     return [];
   }
 }
 
-// Open a file from file tree
+// Open a file from file tree (does NOT change root folder)
 ipcMain.handle('open-file-from-tree', async (event, filePath) => {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
     currentFilePath = filePath;
+    // Don't change rootFolderPath - keep the original root
     isDocumentModified = false;
-    mainWindow?.webContents.send('file-opened', { path: filePath, content });
+    mainWindow?.webContents.send('file-opened', { path: filePath, content, isNewRoot: false });
     updateWindowTitle();
-    return { success: true };
+    addToRecentFiles(filePath);
+    return { success: true, currentFilePath: filePath };
   } catch (err) {
     dialog.showErrorBox('Error', `Failed to open file: ${err.message}`);
     return { success: false, error: err.message };
@@ -579,8 +713,87 @@ ipcMain.on('current-theme', (event, themeName) => {
   updateThemeMenu();
 });
 
+// Recent files management
+function loadRecentFiles() {
+  try {
+    if (fs.existsSync(recentFilesPath)) {
+      const data = fs.readFileSync(recentFilesPath, 'utf-8');
+      recentFiles = JSON.parse(data);
+      // Filter out files that no longer exist
+      recentFiles = recentFiles.filter(f => fs.existsSync(f.path));
+    }
+  } catch (err) {
+    console.error('Failed to load recent files:', err);
+    recentFiles = [];
+  }
+}
+
+function saveRecentFiles() {
+  try {
+    fs.writeFileSync(recentFilesPath, JSON.stringify(recentFiles, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to save recent files:', err);
+  }
+}
+
+function addToRecentFiles(filePath) {
+  const name = path.basename(filePath);
+
+  // Remove if already exists (to move to top)
+  recentFiles = recentFiles.filter(f => f.path !== filePath);
+
+  // Add to beginning
+  recentFiles.unshift({
+    path: filePath,
+    name: name,
+    timestamp: Date.now()
+  });
+
+  // Keep only last 10
+  recentFiles = recentFiles.slice(0, 10);
+
+  saveRecentFiles();
+  updateApplicationMenu();
+}
+
+function clearRecentFiles() {
+  recentFiles = [];
+  saveRecentFiles();
+  updateApplicationMenu();
+}
+
+async function openRecentFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    // File no longer exists, remove from recent and show error
+    recentFiles = recentFiles.filter(f => f.path !== filePath);
+    saveRecentFiles();
+    updateApplicationMenu();
+    dialog.showErrorBox('File Not Found', `The file "${path.basename(filePath)}" could not be found.`);
+    return;
+  }
+
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    currentFilePath = filePath;
+    rootFolderPath = path.dirname(filePath);
+    isDocumentModified = false;
+    mainWindow?.webContents.send('file-opened', { path: filePath, content, isNewRoot: true });
+    updateWindowTitle();
+    addToRecentFiles(filePath);
+  } catch (err) {
+    dialog.showErrorBox('Error', `Failed to open file: ${err.message}`);
+  }
+}
+
+function updateApplicationMenu() {
+  const menuTemplate = buildMenuTemplate();
+  const newMenu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(newMenu);
+}
+
 // App lifecycle
 app.whenReady().then(() => {
+  loadRecentFiles();
   const menu = Menu.buildFromTemplate(buildMenuTemplate());
   Menu.setApplicationMenu(menu);
   createWindow();

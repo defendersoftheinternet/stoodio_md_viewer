@@ -23,6 +23,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onThemeChange: (callback) => ipcRenderer.on('theme-change', (event, themeName) => callback(themeName)),
   sendCurrentTheme: (themeName) => ipcRenderer.send('current-theme', themeName),
 
+  // Export
+  onPrepareForExport: (callback) => ipcRenderer.on('prepare-for-export', callback),
+  onRequestHtmlExport: (callback) => ipcRenderer.on('request-html-export', callback),
+  sendHtmlExport: (htmlContent) => ipcRenderer.send('html-export-content', htmlContent),
+
+  // Find & Replace
+  onFindReplace: (callback) => ipcRenderer.on('find-replace', callback),
+  onFindNext: (callback) => ipcRenderer.on('find-next', callback),
+  onFindPrevious: (callback) => ipcRenderer.on('find-previous', callback),
+
   // File operations
   renameFile: (newName) => ipcRenderer.invoke('rename-file', newName),
   moveFile: () => ipcRenderer.invoke('move-file'),
@@ -30,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // File tree
   getDirectoryContents: () => ipcRenderer.invoke('get-directory-contents'),
+  getFolderContents: (folderPath) => ipcRenderer.invoke('get-folder-contents', folderPath),
   openFileFromTree: (filePath) => ipcRenderer.invoke('open-file-from-tree', filePath),
 
   // Remove listeners

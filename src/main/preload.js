@@ -43,6 +43,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFolderContents: (folderPath) => ipcRenderer.invoke('get-folder-contents', folderPath),
   openFileFromTree: (filePath) => ipcRenderer.invoke('open-file-from-tree', filePath),
 
+  // Tab management
+  onNewTab: (callback) => ipcRenderer.on('new-tab', callback),
+  onCloseTab: (callback) => ipcRenderer.on('close-tab', callback),
+  onNextTab: (callback) => ipcRenderer.on('next-tab', callback),
+  onPrevTab: (callback) => ipcRenderer.on('prev-tab', callback),
+  onSaveComplete: (callback) => ipcRenderer.on('save-complete', (event, data) => callback(data)),
+  setActiveTabInfo: (info) => ipcRenderer.send('active-tab-info', info),
+  confirmClose: (fileName) => ipcRenderer.invoke('confirm-close', fileName),
+
   // Remove listeners
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
 });

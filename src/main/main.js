@@ -13,10 +13,59 @@ let currentTheme = defaultTheme;
 const recentFilesPath = path.join(app.getPath('userData'), 'recent-files.json');
 let recentFiles = []; // Array of { path, name, timestamp }
 
+// Window state persistence
+const windowStatePath = path.join(app.getPath('userData'), 'window-state.json');
+let windowState = {
+  width: 1200,
+  height: 800,
+  x: undefined,
+  y: undefined
+};
+
+function loadWindowState() {
+  try {
+    if (fs.existsSync(windowStatePath)) {
+      const data = fs.readFileSync(windowStatePath, 'utf-8');
+      const saved = JSON.parse(data);
+      // Validate the saved state
+      if (saved.width && saved.height) {
+        windowState = saved;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load window state:', err);
+  }
+}
+
+function saveWindowState() {
+  if (!mainWindow) return;
+
+  // Don't save if minimized or maximized
+  if (mainWindow.isMinimized() || mainWindow.isMaximized()) return;
+
+  const bounds = mainWindow.getBounds();
+  windowState = {
+    width: bounds.width,
+    height: bounds.height,
+    x: bounds.x,
+    y: bounds.y
+  };
+
+  try {
+    fs.writeFileSync(windowStatePath, JSON.stringify(windowState, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to save window state:', err);
+  }
+}
+
 function createWindow() {
+  loadWindowState();
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: windowState.width,
+    height: windowState.height,
+    x: windowState.x,
+    y: windowState.y,
     minWidth: 600,
     minHeight: 400,
     titleBarStyle: 'hiddenInset',
@@ -27,6 +76,10 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     }
   });
+
+  // Save window state on resize and move
+  mainWindow.on('resize', saveWindowState);
+  mainWindow.on('move', saveWindowState);
 
   // In development, load from Vite dev server
   // In production, load the built file
@@ -40,6 +93,11 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Handle pending file opens after window is ready
+  mainWindow.webContents.on('did-finish-load', () => {
+    handlePendingFile();
   });
 
   updateWindowTitle();
@@ -82,10 +140,16 @@ function buildMenuTemplate() {
       label: 'File',
       submenu: [
         {
-          label: 'New',
+          label: 'New Tab',
           accelerator: 'CmdOrCtrl+N',
-          click: () => newDocument()
+          click: () => mainWindow?.webContents.send('new-tab')
         },
+        {
+          label: 'Close Tab',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => mainWindow?.webContents.send('close-tab')
+        },
+        { type: 'separator' },
         {
           label: 'Open...',
           accelerator: 'CmdOrCtrl+O',
@@ -142,8 +206,6 @@ function buildMenuTemplate() {
           accelerator: 'CmdOrCtrl+P',
           click: () => printDocument()
         },
-        { type: 'separator' },
-        { role: 'close' }
       ]
     },
     {
@@ -308,6 +370,17 @@ function buildMenuTemplate() {
         { role: 'minimize' },
         { role: 'zoom' },
         { type: 'separator' },
+        {
+          label: 'Select Next Tab',
+          accelerator: 'Ctrl+Tab',
+          click: () => mainWindow?.webContents.send('next-tab')
+        },
+        {
+          label: 'Select Previous Tab',
+          accelerator: 'Ctrl+Shift+Tab',
+          click: () => mainWindow?.webContents.send('prev-tab')
+        },
+        { type: 'separator' },
         { role: 'front' }
       ]
     },
@@ -465,6 +538,8 @@ ipcMain.on('content-for-save', (event, content) => {
       fs.writeFileSync(currentFilePath, content, 'utf-8');
       isDocumentModified = false;
       updateWindowTitle();
+      // Notify renderer that save completed successfully
+      mainWindow?.webContents.send('save-complete', { path: currentFilePath });
     } catch (err) {
       dialog.showErrorBox('Error', `Failed to save file: ${err.message}`);
     }
@@ -487,6 +562,28 @@ ipcMain.on('html-export-content', (event, htmlContent) => {
 ipcMain.on('document-modified', () => {
   isDocumentModified = true;
   updateWindowTitle();
+});
+
+// Active tab info from renderer (for window title)
+ipcMain.on('active-tab-info', (event, info) => {
+  currentFilePath = info.path;
+  isDocumentModified = info.isModified;
+  updateWindowTitle();
+});
+
+// Confirm close dialog for modified tabs
+ipcMain.handle('confirm-close', async (event, fileName) => {
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    buttons: ['Save', "Don't Save", 'Cancel'],
+    defaultId: 0,
+    message: `Do you want to save changes to "${fileName}"?`,
+    detail: 'Your changes will be lost if you don\'t save them.'
+  });
+
+  if (result.response === 0) return 'save';
+  if (result.response === 1) return 'discard';
+  return 'cancel';
 });
 
 ipcMain.handle('get-file-info', async () => {
@@ -793,6 +890,16 @@ function updateApplicationMenu() {
 
 // App lifecycle
 app.whenReady().then(() => {
+  // Set up About panel
+  app.setAboutPanelOptions({
+    applicationName: 'Stoodio MD',
+    applicationVersion: app.getVersion(),
+    version: '', // Build number (optional)
+    copyright: '© 2024 Stoodio',
+    credits: 'A beautiful markdown editor with live preview.\n\nBuilt with Electron and Milkdown.',
+    website: 'https://stoodio.app'
+  });
+
   loadRecentFiles();
   const menu = Menu.buildFromTemplate(buildMenuTemplate());
   Menu.setApplicationMenu(menu);
@@ -810,3 +917,58 @@ app.on('activate', () => {
     createWindow();
   }
 });
+
+// Handle file open events (double-click .md file or drag to dock)
+let pendingFilePath = null;
+
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+
+  // Check if it's a markdown file
+  if (!isMarkdownFile(filePath)) return;
+
+  if (mainWindow) {
+    // App is ready, open the file
+    openFileFromPath(filePath);
+  } else {
+    // App not ready yet, store for later
+    pendingFilePath = filePath;
+  }
+});
+
+// Open a file from a path (used by open-file event and command line)
+async function openFileFromPath(filePath) {
+  if (!fs.existsSync(filePath)) {
+    dialog.showErrorBox('File Not Found', `The file "${path.basename(filePath)}" could not be found.`);
+    return;
+  }
+
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    currentFilePath = filePath;
+    rootFolderPath = path.dirname(filePath);
+    isDocumentModified = false;
+    mainWindow?.webContents.send('file-opened', { path: filePath, content, isNewRoot: true });
+    updateWindowTitle();
+    addToRecentFiles(filePath);
+
+    // Bring window to front
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  } catch (err) {
+    dialog.showErrorBox('Error', `Failed to open file: ${err.message}`);
+  }
+}
+
+// Handle pending file after window is ready
+function handlePendingFile() {
+  if (pendingFilePath) {
+    // Small delay to ensure renderer is ready
+    setTimeout(() => {
+      openFileFromPath(pendingFilePath);
+      pendingFilePath = null;
+    }, 500);
+  }
+}

@@ -113,6 +113,252 @@ let isSourceMode = false;
 let isPopoverOpen = false;
 let currentSidebarTab = 'outline';
 
+// Tab state
+let tabs = [];  // Array of { id, path, name, content, isModified, scrollPos }
+let activeTabId = null;
+let tabIdCounter = 0;
+
+function generateTabId() {
+  return `tab-${++tabIdCounter}`;
+}
+
+// Get the active tab object
+function getActiveTab() {
+  return tabs.find(t => t.id === activeTabId);
+}
+
+// Create a new tab
+function createTab(path = null, content = defaultContent, switchTo = true) {
+  // Check if file is already open
+  if (path) {
+    const existingTab = tabs.find(t => t.path === path);
+    if (existingTab) {
+      if (switchTo) switchTab(existingTab.id);
+      return existingTab;
+    }
+  }
+
+  const name = path ? path.split('/').pop() : 'Untitled';
+  const tab = {
+    id: generateTabId(),
+    path,
+    name,
+    content,
+    isModified: false,
+    scrollPos: 0
+  };
+
+  tabs.push(tab);
+
+  if (switchTo) {
+    switchTab(tab.id);
+  } else {
+    renderTabs();
+  }
+
+  return tab;
+}
+
+// Switch to a tab
+async function switchTab(tabId) {
+  if (tabId === activeTabId) return;
+
+  // Save current tab state
+  const currentTab = getActiveTab();
+  if (currentTab && crepe) {
+    currentTab.content = crepe.getMarkdown();
+    const editorEl = document.querySelector('.milkdown .ProseMirror');
+    currentTab.scrollPos = editorEl?.scrollTop || 0;
+  }
+
+  activeTabId = tabId;
+  const newTab = getActiveTab();
+
+  if (newTab) {
+    // Update editor content
+    await initEditor(newTab.content);
+
+    // Restore scroll position after a short delay
+    setTimeout(() => {
+      const editorEl = document.querySelector('.milkdown .ProseMirror');
+      if (editorEl) editorEl.scrollTop = newTab.scrollPos;
+    }, 50);
+
+    // Update UI
+    updateFilename(newTab.path);
+    renderTabs();
+
+    // Notify main process of active tab change
+    if (window.electronAPI?.setActiveTabInfo) {
+      window.electronAPI.setActiveTabInfo({
+        path: newTab.path,
+        name: newTab.name,
+        isModified: newTab.isModified
+      });
+    }
+  }
+}
+
+// Close a tab
+async function closeTab(tabId) {
+  const tabIndex = tabs.findIndex(t => t.id === tabId);
+  if (tabIndex === -1) return;
+
+  const tab = tabs[tabIndex];
+
+  // Prompt to save if modified
+  if (tab.isModified) {
+    const shouldClose = await confirmCloseTab(tab);
+    if (!shouldClose) return;
+  }
+
+  // Remove the tab
+  tabs.splice(tabIndex, 1);
+
+  // Handle closing active tab
+  if (tabId === activeTabId) {
+    if (tabs.length === 0) {
+      // Create new untitled tab if closing last tab
+      createTab();
+    } else {
+      // Switch to adjacent tab
+      const newIndex = Math.min(tabIndex, tabs.length - 1);
+      switchTab(tabs[newIndex].id);
+    }
+  } else {
+    renderTabs();
+  }
+}
+
+// Confirm close for modified tab
+async function confirmCloseTab(tab) {
+  if (!window.electronAPI?.confirmClose) {
+    // Fallback to browser confirm
+    return confirm(`Save changes to "${tab.name}" before closing?`);
+  }
+
+  const result = await window.electronAPI.confirmClose(tab.name);
+  if (result === 'save') {
+    // Save the tab first
+    await saveActiveTab();
+    return true;
+  } else if (result === 'discard') {
+    return true;
+  }
+  return false; // Cancel
+}
+
+// Save the active tab
+async function saveActiveTab() {
+  const tab = getActiveTab();
+  if (!tab) return;
+
+  // Update content from editor
+  if (crepe) {
+    tab.content = crepe.getMarkdown();
+  }
+
+  // Request save via main process
+  if (window.electronAPI) {
+    window.electronAPI.sendContent(tab.content);
+  }
+}
+
+// Mark active tab as modified
+function markTabModified() {
+  const tab = getActiveTab();
+  if (tab && !tab.isModified) {
+    tab.isModified = true;
+    renderTabs();
+
+    if (window.electronAPI?.setActiveTabInfo) {
+      window.electronAPI.setActiveTabInfo({
+        path: tab.path,
+        name: tab.name,
+        isModified: true
+      });
+    }
+  }
+}
+
+// Mark active tab as saved (not modified)
+function markTabSaved(newPath = null) {
+  const tab = getActiveTab();
+  if (tab) {
+    tab.isModified = false;
+    if (newPath) {
+      tab.path = newPath;
+      tab.name = newPath.split('/').pop();
+    }
+    renderTabs();
+    updateFilename(tab.path);
+
+    if (window.electronAPI?.setActiveTabInfo) {
+      window.electronAPI.setActiveTabInfo({
+        path: tab.path,
+        name: tab.name,
+        isModified: false
+      });
+    }
+  }
+}
+
+// Render the tab bar
+function renderTabs() {
+  const container = document.getElementById('tabs-container');
+  if (!container) return;
+
+  container.innerHTML = tabs.map(tab => `
+    <div class="tab ${tab.id === activeTabId ? 'active' : ''} ${tab.isModified ? 'modified' : ''}"
+         data-tab-id="${tab.id}">
+      <span class="tab-name">${escapeHtml(tab.name)}</span>
+      <button class="tab-close" data-tab-id="${tab.id}" title="Close">×</button>
+    </div>
+  `).join('');
+
+  attachTabListeners();
+}
+
+// Attach click listeners to tabs
+function attachTabListeners() {
+  const container = document.getElementById('tabs-container');
+  if (!container) return;
+
+  // Tab click (switch)
+  container.querySelectorAll('.tab').forEach(tabEl => {
+    tabEl.addEventListener('click', (e) => {
+      if (e.target.closest('.tab-close')) return;
+      const tabId = tabEl.dataset.tabId;
+      switchTab(tabId);
+    });
+  });
+
+  // Close button click
+  container.querySelectorAll('.tab-close').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const tabId = btn.dataset.tabId;
+      closeTab(tabId);
+    });
+  });
+}
+
+// Navigate to next tab
+function nextTab() {
+  if (tabs.length <= 1) return;
+  const currentIndex = tabs.findIndex(t => t.id === activeTabId);
+  const nextIndex = (currentIndex + 1) % tabs.length;
+  switchTab(tabs[nextIndex].id);
+}
+
+// Navigate to previous tab
+function prevTab() {
+  if (tabs.length <= 1) return;
+  const currentIndex = tabs.findIndex(t => t.id === activeTabId);
+  const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+  switchTab(tabs[prevIndex].id);
+}
+
 // Find & Replace state
 let isFindPanelOpen = false;
 let findMatches = [];
@@ -181,6 +427,7 @@ async function initEditor(content = defaultContent) {
     // Listen for updates
     crepe.on((listener) => {
       listener.updated((ctx, doc, prevDoc) => {
+        markTabModified();
         if (window.electronAPI) {
           window.electronAPI.documentModified();
         }
@@ -204,35 +451,60 @@ function updateOutline() {
   const outlineEl = document.getElementById('outline');
   if (!outlineEl || !crepe) return;
 
-  // Get markdown content and extract headings
-  const markdown = crepe.getMarkdown();
-  const headings = [];
-  const lines = markdown.split('\n');
+  // Get headings directly from the ProseMirror DOM
+  const editorEl = document.querySelector('.milkdown .ProseMirror');
+  if (!editorEl) return;
 
-  lines.forEach((line, index) => {
-    const match = line.match(/^(#{1,6})\s+(.+)$/);
-    if (match) {
-      headings.push({
-        level: match[1].length,
-        text: match[2],
-        line: index
-      });
-    }
-  });
+  const headingEls = editorEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
 
-  // Build outline HTML
-  if (headings.length === 0) {
+  if (headingEls.length === 0) {
     outlineEl.innerHTML = '<p class="outline-empty">No headings found</p>';
     return;
   }
 
-  const html = headings.map(h => `
-    <a href="#" class="outline-item outline-h${h.level}" data-line="${h.line}">
-      ${escapeHtml(h.text)}
-    </a>
-  `).join('');
+  // Build outline HTML with unique IDs for each heading
+  const html = Array.from(headingEls).map((el, index) => {
+    const level = parseInt(el.tagName[1]);
+    const text = el.textContent || '';
+    return `
+      <a href="#" class="outline-item outline-h${level}" data-heading-index="${index}">
+        ${escapeHtml(text)}
+      </a>
+    `;
+  }).join('');
 
   outlineEl.innerHTML = html;
+
+  // Attach click listeners to outline items
+  outlineEl.querySelectorAll('.outline-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      const index = parseInt(item.dataset.headingIndex);
+      scrollToHeading(index);
+    });
+  });
+}
+
+// Scroll to a heading by its index in the document
+function scrollToHeading(index) {
+  const editorEl = document.querySelector('.milkdown .ProseMirror');
+  if (!editorEl) return;
+
+  const headingEls = editorEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  const targetHeading = headingEls[index];
+
+  if (targetHeading) {
+    targetHeading.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+
+    // Brief highlight effect
+    targetHeading.classList.add('outline-highlight');
+    setTimeout(() => {
+      targetHeading.classList.remove('outline-highlight');
+    }, 1500);
+  }
 }
 
 // Escape HTML entities
@@ -510,6 +782,7 @@ function toggleSourceMode(enable) {
     sourceEl.className = 'source-editor';
     sourceEl.spellcheck = false;
     sourceEl.addEventListener('input', () => {
+      markTabModified();
       if (window.electronAPI) window.electronAPI.documentModified();
     });
 
@@ -895,16 +1168,14 @@ function setupElectronListeners() {
     return;
   }
 
-  // New document
+  // New document (new tab)
   window.electronAPI.onNewDocument(() => {
-    initEditor(defaultContent);
-    updateFilename(null);
+    createTab();
   });
 
-  // File opened
+  // File opened (new tab or switch to existing)
   window.electronAPI.onFileOpened((data) => {
-    initEditor(data.content);
-    updateFilename(data.path);
+    createTab(data.path, data.content);
 
     // Handle file tree updates
     if (data.isNewRoot) {
@@ -1000,6 +1271,29 @@ function setupElectronListeners() {
     } else {
       showFindPanel(false);
     }
+  });
+
+  // Tab navigation
+  window.electronAPI.onCloseTab?.(() => {
+    const tab = getActiveTab();
+    if (tab) closeTab(tab.id);
+  });
+
+  window.electronAPI.onNextTab?.(() => {
+    nextTab();
+  });
+
+  window.electronAPI.onPrevTab?.(() => {
+    prevTab();
+  });
+
+  window.electronAPI.onNewTab?.(() => {
+    createTab();
+  });
+
+  // When save completes successfully
+  window.electronAPI.onSaveComplete?.((data) => {
+    markTabSaved(data?.path);
   });
 }
 
@@ -1231,4 +1525,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Initialize
 setupElectronListeners();
-initEditor();
+
+// Create initial tab
+createTab();
+
+// New tab button listener
+document.getElementById('new-tab-btn')?.addEventListener('click', () => {
+  createTab();
+});

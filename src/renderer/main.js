@@ -1405,7 +1405,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Filename popover logic
   const filenameContainer = document.getElementById('filename-container');
-  filenameContainer?.addEventListener('click', togglePopover);
+  filenameContainer?.addEventListener('click', (e) => {
+    // Cmd+click shows path menu (macOS native behavior)
+    if (e.metaKey && window.electronAPI?.showPathMenu) {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = filenameContainer.getBoundingClientRect();
+      window.electronAPI.showPathMenu({
+        x: Math.round(rect.left),
+        y: Math.round(rect.bottom + 4)
+      });
+      return;
+    }
+    togglePopover(e);
+  });
+
+  // Right-click on filename shows path hierarchy (macOS native behavior)
+  filenameContainer?.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (window.electronAPI?.showPathMenu) {
+      window.electronAPI.showPathMenu({
+        x: Math.round(e.clientX),
+        y: Math.round(e.clientY)
+      });
+    }
+  });
 
   // Close popover when clicking outside
   document.addEventListener('mousedown', (e) => {

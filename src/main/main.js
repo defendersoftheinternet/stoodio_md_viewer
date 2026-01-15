@@ -810,6 +810,81 @@ ipcMain.on('current-theme', (event, themeName) => {
   updateThemeMenu();
 });
 
+// Show path hierarchy context menu (macOS-style Cmd+click on title)
+ipcMain.handle('show-path-menu', async (event, position) => {
+  if (!currentFilePath) return;
+
+  // Build path hierarchy from file to root
+  const pathParts = [];
+  let currentPath = currentFilePath;
+
+  // Add the file itself first
+  pathParts.push({
+    name: path.basename(currentPath),
+    path: currentPath,
+    isFile: true
+  });
+
+  // Walk up the directory tree
+  let dir = path.dirname(currentPath);
+  const rootPath = path.parse(dir).root;
+
+  while (dir && dir !== rootPath) {
+    pathParts.push({
+      name: path.basename(dir),
+      path: dir,
+      isFile: false
+    });
+    const parentDir = path.dirname(dir);
+    if (parentDir === dir) break; // Reached root
+    dir = parentDir;
+  }
+
+  // Add root if we're on macOS (show "/" or volume name)
+  if (process.platform === 'darwin') {
+    pathParts.push({
+      name: 'Macintosh HD',
+      path: '/',
+      isFile: false,
+      isRoot: true
+    });
+  }
+
+  // Get icons for all paths (using actual file system icons)
+  const iconSize = { width: 16, height: 16 };
+  const menuItems = await Promise.all(pathParts.map(async (item) => {
+    let icon = null;
+    try {
+      icon = await app.getFileIcon(item.path, { size: 'small' });
+      // Resize to 16x16 for menu consistency
+      icon = icon.resize(iconSize);
+    } catch (err) {
+      console.error('Failed to get icon for:', item.path, err);
+    }
+
+    return {
+      label: item.name,
+      icon: icon,
+      click: () => {
+        if (item.isFile) {
+          // Reveal the file in Finder
+          shell.showItemInFolder(item.path);
+        } else {
+          // Open the folder in Finder
+          shell.openPath(item.path);
+        }
+      }
+    };
+  }));
+
+  const menu = Menu.buildFromTemplate(menuItems);
+  menu.popup({
+    window: mainWindow,
+    x: position?.x,
+    y: position?.y
+  });
+});
+
 // Recent files management
 function loadRecentFiles() {
   try {

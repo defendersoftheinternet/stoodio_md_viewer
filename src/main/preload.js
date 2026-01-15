@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   renameFile: (newName) => ipcRenderer.invoke('rename-file', newName),
   moveFile: () => ipcRenderer.invoke('move-file'),
   getFileInfo: () => ipcRenderer.invoke('get-file-info'),
+  showPathMenu: (position) => ipcRenderer.invoke('show-path-menu', position),
 
   // File tree
   getDirectoryContents: () => ipcRenderer.invoke('get-directory-contents'),

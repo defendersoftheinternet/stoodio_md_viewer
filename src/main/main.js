@@ -8,6 +8,8 @@ let currentFilePath = null;
 let rootFolderPath = null; // Root folder for file tree (set on first file open)
 let isDocumentModified = false;
 let currentTheme = defaultTheme;
+let allowWindowClose = false;
+let isCloseCheckPending = false;
 
 // Recent files
 const recentFilesPath = path.join(app.getPath('userData'), 'recent-files.json');
@@ -60,6 +62,8 @@ function saveWindowState() {
 
 function createWindow() {
   loadWindowState();
+  allowWindowClose = false;
+  isCloseCheckPending = false;
 
   mainWindow = new BrowserWindow({
     width: windowState.width,
@@ -73,13 +77,50 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js')
     }
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const currentUrl = mainWindow.webContents.getURL();
+    if (url !== currentUrl) {
+      event.preventDefault();
+      if (isSafeExternalUrl(url)) {
+        shell.openExternal(url);
+      }
+    }
+  });
+
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [getContentSecurityPolicy()]
+      }
+    });
   });
 
   // Save window state on resize and move
   mainWindow.on('resize', saveWindowState);
   mainWindow.on('move', saveWindowState);
+
+  mainWindow.on('close', (event) => {
+    if (allowWindowClose || !mainWindow) return;
+
+    event.preventDefault();
+    if (isCloseCheckPending) return;
+
+    isCloseCheckPending = true;
+    mainWindow.webContents.send('request-close-app');
+  });
 
   // In development, load from Vite dev server
   // In production, load the built file
@@ -103,6 +144,34 @@ function createWindow() {
   updateWindowTitle();
 }
 
+function isSafeExternalUrl(url) {
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'mailto:';
+  } catch {
+    return false;
+  }
+}
+
+function getContentSecurityPolicy() {
+  const isDev = process.argv.includes('--dev');
+  const scriptSrc = isDev ? "'self' 'unsafe-eval'" : "'self'";
+  const connectSrc = isDev ? "'self' http://localhost:5173 ws://localhost:5173" : "'self'";
+
+  return [
+    "default-src 'self'",
+    `script-src ${scriptSrc}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: file:",
+    "font-src 'self' data:",
+    `connect-src ${connectSrc}`,
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'"
+  ].join('; ');
+}
+
 function updateWindowTitle() {
   if (!mainWindow) return;
 
@@ -119,12 +188,37 @@ function buildMenuTemplate() {
     {
       label: app.name,
       submenu: [
-        { role: 'about' },
+        {
+          label: 'About Stoodio MD',
+          click: () => {
+            const version = app.getVersion();
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'About Stoodio MD',
+              message: 'Stoodio MD',
+              detail: `Version ${version}\n\nA beautiful markdown editor with live preview.\n\n© 2024-2026 Stoodio`,
+              buttons: ['OK']
+            });
+          }
+        },
+        {
+          label: 'Check for Updates...',
+          click: () => {
+            const version = app.getVersion();
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'Check for Updates',
+              message: `You're running Stoodio MD v${version}`,
+              detail: 'Automatic update checking will be available in a future release.',
+              buttons: ['OK']
+            });
+          }
+        },
         { type: 'separator' },
         {
           label: 'Settings...',
           accelerator: 'CmdOrCtrl+,',
-          click: () => mainWindow?.webContents.send('open-settings')
+          enabled: false
         },
         { type: 'separator' },
         { role: 'services' },
@@ -220,6 +314,21 @@ function buildMenuTemplate() {
         { role: 'selectAll' },
         { type: 'separator' },
         {
+          label: 'Copy as Markdown',
+          accelerator: 'CmdOrCtrl+Shift+C',
+          click: () => mainWindow?.webContents.send('copy-as-markdown')
+        },
+        {
+          label: 'Copy as HTML',
+          click: () => mainWindow?.webContents.send('copy-as-html')
+        },
+        {
+          label: 'Paste as Plain Text',
+          accelerator: 'CmdOrCtrl+Alt+Shift+V',
+          click: () => mainWindow?.webContents.send('paste-plain-text')
+        },
+        { type: 'separator' },
+        {
           label: 'Find',
           submenu: [
             {
@@ -230,6 +339,7 @@ function buildMenuTemplate() {
             {
               label: 'Find and Replace...',
               accelerator: 'CmdOrCtrl+H',
+              enabled: false,
               click: () => mainWindow?.webContents.send('find-replace')
             },
             { type: 'separator' },
@@ -261,9 +371,20 @@ function buildMenuTemplate() {
           click: () => mainWindow?.webContents.send('format', 'italic')
         },
         {
+          label: 'Underline',
+          accelerator: 'CmdOrCtrl+U',
+          click: () => mainWindow?.webContents.send('format', 'underline')
+        },
+        {
           label: 'Strikethrough',
-          accelerator: 'CmdOrCtrl+Shift+S',
+          accelerator: 'CmdOrCtrl+Shift+X',
           click: () => mainWindow?.webContents.send('format', 'strike')
+        },
+        { type: 'separator' },
+        {
+          label: 'Clear Format',
+          accelerator: 'CmdOrCtrl+Shift+\\',
+          click: () => mainWindow?.webContents.send('format', 'clear')
         },
         { type: 'separator' },
         {
@@ -275,6 +396,11 @@ function buildMenuTemplate() {
           label: 'Link...',
           accelerator: 'CmdOrCtrl+K',
           click: () => mainWindow?.webContents.send('format', 'link')
+        },
+        { type: 'separator' },
+        {
+          label: 'Image...',
+          click: () => insertImage()
         }
       ]
     },
@@ -295,6 +421,21 @@ function buildMenuTemplate() {
           label: 'Heading 3',
           accelerator: 'CmdOrCtrl+3',
           click: () => mainWindow?.webContents.send('paragraph', 'h3')
+        },
+        {
+          label: 'Heading 4',
+          accelerator: 'CmdOrCtrl+4',
+          click: () => mainWindow?.webContents.send('paragraph', 'h4')
+        },
+        {
+          label: 'Heading 5',
+          accelerator: 'CmdOrCtrl+5',
+          click: () => mainWindow?.webContents.send('paragraph', 'h5')
+        },
+        {
+          label: 'Heading 6',
+          accelerator: 'CmdOrCtrl+6',
+          click: () => mainWindow?.webContents.send('paragraph', 'h6')
         },
         { type: 'separator' },
         {
@@ -323,6 +464,38 @@ function buildMenuTemplate() {
         {
           label: 'Code Block',
           click: () => mainWindow?.webContents.send('paragraph', 'codeblock')
+        },
+        { type: 'separator' },
+        {
+          label: 'Table',
+          submenu: [
+            {
+              label: 'Insert Table',
+              click: () => mainWindow?.webContents.send('table-command', 'insert')
+            },
+            { type: 'separator' },
+            {
+              label: 'Add Row Before',
+              click: () => mainWindow?.webContents.send('table-command', 'addRowBefore')
+            },
+            {
+              label: 'Add Row After',
+              click: () => mainWindow?.webContents.send('table-command', 'addRowAfter')
+            },
+            {
+              label: 'Add Column Before',
+              click: () => mainWindow?.webContents.send('table-command', 'addColBefore')
+            },
+            {
+              label: 'Add Column After',
+              click: () => mainWindow?.webContents.send('table-command', 'addColAfter')
+            },
+            { type: 'separator' },
+            {
+              label: 'Delete Selected Cells',
+              click: () => mainWindow?.webContents.send('table-command', 'deleteSelected')
+            }
+          ]
         }
       ]
     },
@@ -392,6 +565,11 @@ function buildMenuTemplate() {
           click: () => {
             require('electron').shell.openExternal('https://www.markdownguide.org/basic-syntax/');
           }
+        },
+        { type: 'separator' },
+        {
+          label: `Version ${app.getVersion()}`,
+          enabled: false
         }
       ]
     }
@@ -531,11 +709,59 @@ function printDocument() {
   mainWindow.webContents.print({ printBackground: true });
 }
 
+// Image insertion via menu
+async function insertImage() {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'] }
+    ]
+  });
+
+  if (result.canceled || !result.filePaths.length) return;
+
+  const imagePath = result.filePaths[0];
+  const imageFileName = path.basename(imagePath);
+
+  let targetDir;
+  if (currentFilePath) {
+    targetDir = path.join(path.dirname(currentFilePath), 'assets');
+  } else {
+    targetDir = path.join(app.getPath('temp'), 'stoodio-assets');
+  }
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  // Deduplicate filename
+  let destFileName = imageFileName;
+  let destPath = path.join(targetDir, destFileName);
+  let counter = 1;
+  while (fs.existsSync(destPath)) {
+    const ext = path.extname(imageFileName);
+    const base = path.basename(imageFileName, ext);
+    destFileName = `${base}-${counter}${ext}`;
+    destPath = path.join(targetDir, destFileName);
+    counter++;
+  }
+
+  fs.copyFileSync(imagePath, destPath);
+
+  const relativePath = `assets/${destFileName}`;
+  mainWindow?.webContents.send('insert-image', { src: relativePath, alt: destFileName, title: '' });
+}
+
 // IPC handlers
+function writeMarkdownFile(filePath, content) {
+  fs.writeFileSync(filePath, content, 'utf-8');
+  addToRecentFiles(filePath);
+}
+
 ipcMain.on('content-for-save', (event, content) => {
   if (currentFilePath) {
     try {
-      fs.writeFileSync(currentFilePath, content, 'utf-8');
+      writeMarkdownFile(currentFilePath, content);
       isDocumentModified = false;
       updateWindowTitle();
       // Notify renderer that save completed successfully
@@ -543,6 +769,41 @@ ipcMain.on('content-for-save', (event, content) => {
     } catch (err) {
       dialog.showErrorBox('Error', `Failed to save file: ${err.message}`);
     }
+  }
+});
+
+ipcMain.handle('save-tab-content', async (event, { path: requestedPath, content, defaultName, isActive }) => {
+  let targetPath = requestedPath;
+
+  if (!targetPath) {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultName || 'Untitled.md',
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, cancelled: true };
+    }
+
+    targetPath = result.filePath;
+  }
+
+  try {
+    writeMarkdownFile(targetPath, content || '');
+
+    if (isActive) {
+      currentFilePath = targetPath;
+      isDocumentModified = false;
+      updateWindowTitle();
+    }
+
+    return { success: true, path: targetPath };
+  } catch (err) {
+    dialog.showErrorBox('Error', `Failed to save file: ${err.message}`);
+    return { success: false, error: err.message };
   }
 });
 
@@ -557,6 +818,35 @@ ipcMain.on('html-export-content', (event, htmlContent) => {
   }
 
   pendingExportPath = null;
+});
+
+// Save image from renderer (drag-drop or clipboard paste)
+ipcMain.handle('save-image', async (event, { buffer, fileName }) => {
+  let targetDir;
+  if (currentFilePath) {
+    targetDir = path.join(path.dirname(currentFilePath), 'assets');
+  } else {
+    targetDir = path.join(app.getPath('temp'), 'stoodio-assets');
+  }
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  // Deduplicate filename
+  let destFileName = fileName;
+  let destPath = path.join(targetDir, destFileName);
+  let counter = 1;
+  while (fs.existsSync(destPath)) {
+    const ext = path.extname(fileName);
+    const base = path.basename(fileName, ext);
+    destFileName = `${base}-${counter}${ext}`;
+    destPath = path.join(targetDir, destFileName);
+    counter++;
+  }
+
+  fs.writeFileSync(destPath, Buffer.from(buffer));
+  return { src: `assets/${destFileName}` };
 });
 
 ipcMain.on('document-modified', () => {
@@ -584,6 +874,15 @@ ipcMain.handle('confirm-close', async (event, fileName) => {
   if (result.response === 0) return 'save';
   if (result.response === 1) return 'discard';
   return 'cancel';
+});
+
+ipcMain.on('close-app-response', (event, canClose) => {
+  isCloseCheckPending = false;
+
+  if (!canClose || !mainWindow) return;
+
+  allowWindowClose = true;
+  mainWindow.close();
 });
 
 ipcMain.handle('get-file-info', async () => {

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="build/icon.png" alt="Stoodio MD" width="128" height="128">
+  <img src="website/favicon.svg" alt="Stoodio MD" width="128" height="128">
 </p>
 
 <h1 align="center">Stoodio MD</h1>
@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="Platform">
   <img src="https://img.shields.io/badge/electron-33-blue" alt="Electron">
@@ -48,13 +48,24 @@ Download the latest `.dmg` from the [Releases](../../releases) page, open it, an
 ### Build from Source
 
 ```bash
-git clone https://github.com/your-username/stoodio-md-viewer.git
+git clone https://github.com/defendersoftheinternet/stoodio_md_viewer.git
 cd stoodio-md-viewer
 npm install
 npm run dist:mac
 ```
 
 The built application will be in the `release/` directory.
+
+For a public macOS release, use Developer ID signing credentials and notarization environment variables before running:
+
+```bash
+APPLE_ID="you@example.com" \
+APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx" \
+APPLE_TEAM_ID="TEAMID1234" \
+npm run dist:mac:release
+```
+
+Electron Builder also supports App Store Connect API key notarization with `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`.
 
 ## Development
 
@@ -80,6 +91,7 @@ npm run dev:electron
 | `npm run build` | Build renderer and copy main process files |
 | `npm run start` | Build and run production app |
 | `npm run dist:mac` | Build distributable `.dmg` and `.zip` |
+| `npm run dist:mac:release` | Build signed/notarized release; fails if Developer ID signing is unavailable |
 
 ## Tech Stack
 
@@ -125,7 +137,7 @@ npm run dev:electron
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+/` | Toggle source mode |
-| `Cmd+Shift+L` | Toggle sidebar |
+| `` Cmd+\ `` | Toggle sidebar |
 
 ## Architecture
 
@@ -138,7 +150,8 @@ src/
 └── renderer/
     ├── main.js        # Milkdown editor, theme switching, outline
     └── styles/
-        └── app.css    # All styles and theme CSS variables
+        ├── core.css   # Layout and structural styles
+        └── themes/    # Theme CSS variables
 ```
 
 The main and renderer processes communicate through a secure IPC bridge. The renderer never has direct access to Node.js APIs. See [DOCUMENTATION.md](DOCUMENTATION.md) for full architectural details.

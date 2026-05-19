@@ -1323,6 +1323,10 @@ body {
   margin-right: 8px;
 }
 
+.milkdown u {
+  text-decoration: underline;
+}
+
 .milkdown a {
   text-decoration: none;
 }

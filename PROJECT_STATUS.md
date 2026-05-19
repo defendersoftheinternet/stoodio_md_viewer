@@ -28,18 +28,25 @@ This document tracks everything completed and remaining work based on the origin
 ### Inline Formatting
 - [x] Bold (`Cmd+B`)
 - [x] Italic (`Cmd+I`)
-- [x] Strikethrough (`Cmd+Shift+S`)
+- [x] Underline (`Cmd+U`; visual editor only, markdown round-trip is not supported)
+- [x] Strikethrough (`Cmd+Shift+X`)
 - [x] Inline code (`` Cmd+` ``)
 - [x] Hyperlinks (`Cmd+K`)
+- [x] Clear formatting (`` Cmd+Shift+\ ``)
+- [x] Copy as Markdown (`Cmd+Shift+C`)
+- [x] Copy as HTML
+- [x] Paste as Plain Text
 
 ### Block Formatting
-- [x] Headings 1-6 (`Cmd+1` through `Cmd+3`, rest via menu)
+- [x] Headings 1-6 (`Cmd+1` through `Cmd+6`)
 - [x] Paragraph (`Cmd+0`)
 - [x] Bullet lists
 - [x] Ordered lists (with proper sequential numbering fix)
 - [x] Blockquotes
 - [x] Code fences/blocks
 - [x] Tables
+- [x] Table editing menu commands
+- [x] Task lists
 - [x] Horizontal rules
 
 ### File Operations
@@ -59,6 +66,8 @@ This document tracks everything completed and remaining work based on the origin
 - [x] Per-tab state (content, scroll position, modified status)
 - [x] Modified indicator on tabs
 - [x] Unsaved changes prompt on close
+- [x] Source-mode edits preserved when switching tabs
+- [x] Inactive modified tabs save the correct tab before close
 
 ### Sidebar
 - [x] Toggle sidebar (`Cmd+\`)
@@ -126,6 +135,9 @@ This document tracks everything completed and remaining work based on the origin
 - [x] File associations
 - [x] About dialog
 - [x] Ad-hoc code signing (local dev)
+- [x] Release signing script that requires Developer ID signing
+- [x] DMG and ZIP release artifacts
+- [x] Renderer CSP and navigation hardening
 
 ---
 
@@ -133,22 +145,10 @@ This document tracks everything completed and remaining work based on the origin
 
 ### Priority 1 (Core - Should Complete)
 
-#### Editing
-- [ ] Underline formatting (`Cmd+U`)
-- [ ] Clear formatting (`Cmd+\`)
-- [ ] Copy as Markdown (`Cmd+Shift+C`)
-- [ ] Copy as HTML
-- [ ] Paste as Plain Text
-- [ ] Headings 4-6 keyboard shortcuts (`Cmd+4`, `Cmd+5`, `Cmd+6`)
-
-#### Block Elements
-- [ ] Task lists (checkboxes)
-- [ ] Table editing UI (insert rows/columns, delete, etc.)
-
 #### Images
-- [ ] Image insertion via menu
-- [ ] Drag & drop images into document
-- [ ] Copy/paste images from clipboard
+- [x] Image insertion via menu
+- [x] Drag & drop images into document
+- [x] Copy/paste images from clipboard
 - [ ] Image resizing
 
 ### Priority 2 (Important - v1.0)

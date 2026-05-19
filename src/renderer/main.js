@@ -9,13 +9,22 @@ import {
   wrapInOrderedListCommand,
   wrapInBlockquoteCommand,
   createCodeBlockCommand,
+  insertImageCommand,
   orderedListSchema,
   listItemSchema
 } from '@milkdown/preset-commonmark';
 import {
-  toggleStrikethroughCommand
+  toggleStrikethroughCommand,
+  insertTableCommand,
+  addColBeforeCommand,
+  addColAfterCommand,
+  addRowBeforeCommand,
+  addRowAfterCommand,
+  deleteSelectedCellsCommand
 } from '@milkdown/preset-gfm';
-import { callCommand, $prose } from '@milkdown/utils';
+import { callCommand, $prose, $markSchema, $command } from '@milkdown/utils';
+import { toggleMark } from '@milkdown/prose/commands';
+import { editorViewCtx } from '@milkdown/core';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
@@ -62,6 +71,100 @@ const fixOrderedListPlugin = $prose((ctx) => {
       });
 
       return needDispatch ? tr.setMeta('addToHistory', false) : null;
+    }
+  });
+});
+
+// Custom underline mark (not standard markdown - uses <u> HTML tags)
+const underlineSchema = $markSchema('underline', () => ({
+  parseDOM: [
+    { tag: 'u' },
+    { style: 'text-decoration', getAttrs: (value) => value === 'underline' && null }
+  ],
+  toDOM: () => ['u', 0],
+  parseMarkdown: {
+    match: () => false, // No standard markdown for underline
+    runner: () => {},
+  },
+  toMarkdown: {
+    match: (mark) => mark.type.name === 'underline',
+    runner: () => {
+      // Underline mark is stripped in markdown output (text content preserved)
+    },
+  },
+}));
+
+const toggleUnderlineCommand = $command('ToggleUnderline', (ctx) => () =>
+  toggleMark(underlineSchema.type(ctx))
+);
+
+// Image paste and drag-drop plugin
+const clipboardImagePlugin = $prose(() => {
+  return new Plugin({
+    key: new PluginKey('STOODIO_CLIPBOARD_IMAGE'),
+    props: {
+      handlePaste(view, event) {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+
+        for (const item of items) {
+          if (item.type.startsWith('image/')) {
+            event.preventDefault();
+            const file = item.getAsFile();
+            if (!file) continue;
+
+            (async () => {
+              try {
+                const buffer = await file.arrayBuffer();
+                if (!window.electronAPI?.saveImage) return;
+                const result = await window.electronAPI.saveImage({
+                  buffer: Array.from(new Uint8Array(buffer)),
+                  fileName: `paste-${Date.now()}.png`
+                });
+                const imageType = view.state.schema.nodes.image;
+                if (imageType) {
+                  const node = imageType.create({ src: result.src, alt: '' });
+                  view.dispatch(view.state.tr.replaceSelectionWith(node));
+                }
+              } catch (err) {
+                console.error('Failed to paste image:', err);
+              }
+            })();
+            return true;
+          }
+        }
+        return false;
+      },
+      handleDrop(view, event) {
+        const files = event.dataTransfer?.files;
+        if (!files || files.length === 0) return false;
+
+        const imageFile = Array.from(files).find(f => f.type.startsWith('image/'));
+        if (!imageFile) return false;
+
+        event.preventDefault();
+        (async () => {
+          try {
+            const buffer = await imageFile.arrayBuffer();
+            if (!window.electronAPI?.saveImage) return;
+            const result = await window.electronAPI.saveImage({
+              buffer: Array.from(new Uint8Array(buffer)),
+              fileName: imageFile.name || `drop-${Date.now()}.png`
+            });
+            const pos = view.posAtCoords({ left: event.clientX, top: event.clientY });
+            if (pos) {
+              const imageType = view.state.schema.nodes.image;
+              if (imageType) {
+                const node = imageType.create({ src: result.src, alt: '' });
+                view.dispatch(view.state.tr.insert(pos.pos, node));
+              }
+            }
+          } catch (err) {
+            console.error('Failed to drop image:', err);
+          }
+        })();
+        return true;
+      }
     }
   });
 });
@@ -165,8 +268,8 @@ async function switchTab(tabId) {
 
   // Save current tab state
   const currentTab = getActiveTab();
-  if (currentTab && crepe) {
-    currentTab.content = crepe.getMarkdown();
+  if (currentTab) {
+    currentTab.content = getMarkdown();
     const editorEl = document.querySelector('.milkdown .ProseMirror');
     currentTab.scrollPos = editorEl?.scrollTop || 0;
   }
@@ -205,6 +308,9 @@ async function closeTab(tabId) {
   if (tabIndex === -1) return;
 
   const tab = tabs[tabIndex];
+  if (tab.id === activeTabId) {
+    tab.content = getMarkdown();
+  }
 
   // Prompt to save if modified
   if (tab.isModified) {
@@ -230,6 +336,21 @@ async function closeTab(tabId) {
   }
 }
 
+async function confirmCloseAllTabs() {
+  const activeTab = getActiveTab();
+  if (activeTab) {
+    activeTab.content = getMarkdown();
+  }
+
+  for (const tab of tabs) {
+    if (!tab.isModified) continue;
+    const shouldClose = await confirmCloseTab(tab);
+    if (!shouldClose) return false;
+  }
+
+  return true;
+}
+
 // Confirm close for modified tab
 async function confirmCloseTab(tab) {
   if (!window.electronAPI?.confirmClose) {
@@ -239,29 +360,56 @@ async function confirmCloseTab(tab) {
 
   const result = await window.electronAPI.confirmClose(tab.name);
   if (result === 'save') {
-    // Save the tab first
-    await saveActiveTab();
-    return true;
+    return saveTab(tab);
   } else if (result === 'discard') {
     return true;
   }
   return false; // Cancel
 }
 
-// Save the active tab
-async function saveActiveTab() {
-  const tab = getActiveTab();
+// Save a specific tab without relying on the main process' active file state.
+async function saveTab(tab) {
   if (!tab) return;
 
-  // Update content from editor
-  if (crepe) {
-    tab.content = crepe.getMarkdown();
+  const isActive = tab.id === activeTabId;
+  if (isActive) {
+    tab.content = getMarkdown();
   }
 
-  // Request save via main process
-  if (window.electronAPI) {
-    window.electronAPI.sendContent(tab.content);
+  if (window.electronAPI?.saveTabContent) {
+    const result = await window.electronAPI.saveTabContent({
+      path: tab.path,
+      content: tab.content,
+      defaultName: tab.name,
+      isActive
+    });
+
+    if (!result?.success) return false;
+
+    tab.isModified = false;
+    if (result.path) {
+      tab.path = result.path;
+      tab.name = result.path.split('/').pop();
+    }
+
+    renderTabs();
+    if (isActive) {
+      updateFilename(tab.path);
+      window.electronAPI.setActiveTabInfo?.({
+        path: tab.path,
+        name: tab.name,
+        isModified: false
+      });
+    }
+    return true;
   }
+
+  return false;
+}
+
+// Save the active tab
+async function saveActiveTab() {
+  return saveTab(getActiveTab());
 }
 
 // Mark active tab as modified
@@ -382,6 +530,7 @@ const chevronIcon = `<svg class="file-tree-chevron" viewBox="0 0 24 24" fill="no
 const formatCommands = {
   bold: () => callCommand(toggleStrongCommand.key),
   italic: () => callCommand(toggleEmphasisCommand.key),
+  underline: () => callCommand(toggleUnderlineCommand.key),
   strike: () => callCommand(toggleStrikethroughCommand.key),
   code: () => callCommand(toggleInlineCodeCommand.key),
   link: () => callCommand(toggleLinkCommand.key)
@@ -391,6 +540,9 @@ const paragraphCommands = {
   h1: () => callCommand(wrapInHeadingCommand.key, 1),
   h2: () => callCommand(wrapInHeadingCommand.key, 2),
   h3: () => callCommand(wrapInHeadingCommand.key, 3),
+  h4: () => callCommand(wrapInHeadingCommand.key, 4),
+  h5: () => callCommand(wrapInHeadingCommand.key, 5),
+  h6: () => callCommand(wrapInHeadingCommand.key, 6),
   paragraph: () => null, // No direct command available
   bullet: () => callCommand(wrapInBulletListCommand.key),
   ordered: () => callCommand(wrapInOrderedListCommand.key),
@@ -398,10 +550,20 @@ const paragraphCommands = {
   codeblock: () => callCommand(createCodeBlockCommand.key)
 };
 
+const tableCommands = {
+  insert: () => callCommand(insertTableCommand.key, { row: 3, col: 3 }),
+  addRowBefore: () => callCommand(addRowBeforeCommand.key),
+  addRowAfter: () => callCommand(addRowAfterCommand.key),
+  addColBefore: () => callCommand(addColBeforeCommand.key),
+  addColAfter: () => callCommand(addColAfterCommand.key),
+  deleteSelected: () => callCommand(deleteSelectedCellsCommand.key)
+};
+
 // Initialize the editor
 async function initEditor(content = defaultContent) {
   console.log('Initializing editor...');
   currentContent = content;
+  isSourceMode = false;
 
   try {
     // Destroy existing editor if any
@@ -413,16 +575,20 @@ async function initEditor(content = defaultContent) {
     // Hide source area and show editor
     const editorEl = document.getElementById('editor');
     const sourceEl = document.getElementById('source-area');
+    const toggleBtn = document.getElementById('toggle-source-btn');
     if (editorEl) editorEl.style.display = 'block';
     if (sourceEl) sourceEl.style.display = 'none';
+    toggleBtn?.classList.remove('active');
 
     crepe = new Crepe({
       root: '#editor',
       defaultValue: content,
     });
 
-    // Add custom plugin to fix ordered list numbering
+    // Add custom plugins
     crepe.editor.use(fixOrderedListPlugin);
+    crepe.editor.use(underlineSchema).use(toggleUnderlineCommand);
+    crepe.editor.use(clipboardImagePlugin);
 
     // Listen for updates
     crepe.on((listener) => {
@@ -1161,6 +1327,100 @@ function debounce(func, wait) {
   };
 }
 
+// Clipboard operations
+async function copyAsMarkdown() {
+  if (!crepe) return;
+  const markdown = crepe.getMarkdown();
+  try {
+    await navigator.clipboard.writeText(markdown);
+  } catch (err) {
+    console.error('Failed to copy markdown:', err);
+  }
+}
+
+async function copyAsHTML() {
+  const editorEl = document.querySelector('.milkdown .ProseMirror');
+  if (!editorEl) return;
+  try {
+    const selection = window.getSelection();
+    let html;
+    if (selection && !selection.isCollapsed) {
+      const range = selection.getRangeAt(0);
+      const container = document.createElement('div');
+      container.appendChild(range.cloneContents());
+      html = container.innerHTML;
+    } else {
+      html = editorEl.innerHTML;
+    }
+    await navigator.clipboard.writeText(html);
+  } catch (err) {
+    console.error('Failed to copy HTML:', err);
+  }
+}
+
+async function pasteAsPlainText() {
+  if (!crepe) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text) return;
+    crepe.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      const { state } = view;
+      const tr = state.tr.insertText(text);
+      view.dispatch(tr);
+      return true;
+    });
+  } catch (err) {
+    console.error('Failed to paste as plain text:', err);
+  }
+}
+
+// Task list toggle
+function handleTaskListToggle() {
+  if (!crepe) return;
+  crepe.action((ctx) => {
+    const view = ctx.get(editorViewCtx);
+    const { state } = view;
+    const { $from } = state.selection;
+
+    // Walk up from cursor to find a list_item node
+    for (let d = $from.depth; d > 0; d--) {
+      const node = $from.node(d);
+      if (node.type.name === 'list_item') {
+        const pos = $from.before(d);
+        const checked = node.attrs.checked;
+        // Toggle: null/undefined → false (task unchecked), false/true → null (back to regular)
+        const newChecked = (checked === null || checked === undefined) ? false : null;
+        const tr = state.tr.setNodeMarkup(pos, null, {
+          ...node.attrs,
+          checked: newChecked
+        });
+        view.dispatch(tr);
+        return true;
+      }
+    }
+
+    // Not in a list - wrap in bullet list first
+    const bulletAction = callCommand(wrapInBulletListCommand.key);
+    bulletAction(ctx);
+    return true;
+  });
+}
+
+// Clear all formatting from selection
+function clearFormatting() {
+  if (!crepe) return;
+  crepe.action((ctx) => {
+    const view = ctx.get(editorViewCtx);
+    const { state } = view;
+    const { from, to } = state.selection;
+    if (from === to) return false;
+    const tr = state.tr.removeMark(from, to);
+    view.dispatch(tr);
+    return true;
+  });
+}
+
 // Set up IPC listeners for Electron
 function setupElectronListeners() {
   if (!window.electronAPI) {
@@ -1218,6 +1478,13 @@ function setupElectronListeners() {
   // Format commands
   window.electronAPI.onFormat((type) => {
     if (isSourceMode || !crepe) return;
+
+    // Clear formatting - special case
+    if (type === 'clear') {
+      clearFormatting();
+      return;
+    }
+
     const command = formatCommands[type];
     if (command) {
       const action = command();
@@ -1228,11 +1495,48 @@ function setupElectronListeners() {
   // Paragraph commands
   window.electronAPI.onParagraph((type) => {
     if (isSourceMode || !crepe) return;
+
+    // Task list toggle - special case
+    if (type === 'task') {
+      handleTaskListToggle();
+      return;
+    }
+
     const command = paragraphCommands[type];
     if (command) {
       const action = command();
       if (action) crepe.action(action);
     }
+  });
+
+  // Table commands
+  window.electronAPI.onTableCommand?.((type) => {
+    if (isSourceMode || !crepe) return;
+    const command = tableCommands[type];
+    if (command) {
+      const action = command();
+      if (action) crepe.action(action);
+    }
+  });
+
+  // Clipboard operations
+  window.electronAPI.onCopyAsMarkdown?.(() => {
+    copyAsMarkdown();
+  });
+
+  window.electronAPI.onCopyAsHTML?.(() => {
+    copyAsHTML();
+  });
+
+  window.electronAPI.onPastePlainText?.(() => {
+    pasteAsPlainText();
+  });
+
+  // Image insertion from menu
+  window.electronAPI.onInsertImage?.((data) => {
+    if (isSourceMode || !crepe) return;
+    const action = callCommand(insertImageCommand.key, { src: data.src, alt: data.alt || '', title: data.title || '' });
+    if (action) crepe.action(action);
   });
 
   // Export - prepare for export (exit source mode if needed)
@@ -1289,6 +1593,11 @@ function setupElectronListeners() {
 
   window.electronAPI.onNewTab?.(() => {
     createTab();
+  });
+
+  window.electronAPI.onRequestCloseApp?.(async () => {
+    const canClose = await confirmCloseAllTabs();
+    window.electronAPI.sendCloseAppResponse?.(canClose);
   });
 
   // When save completes successfully

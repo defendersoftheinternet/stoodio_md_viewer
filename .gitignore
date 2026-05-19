@@ -5,3 +5,4 @@ dist
 *.log
 release/
 .recall/
+_review_for_deletion/

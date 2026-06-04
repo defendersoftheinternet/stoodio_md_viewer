@@ -1,0 +1,95 @@
+name: Release macOS Build
+
+on:
+  push:
+    tags:
+      - v*
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to create or update, such as v1.1.0
+        required: true
+        default: v1.1.0
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    name: Build and publish macOS release
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Determine release tag
+        id: release
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          package_version="$(node -p "require('./package.json').version")"
+          expected_tag="v${package_version}"
+
+          if [[ "${tag}" != "${expected_tag}" ]]; then
+            echo "Release tag ${tag} does not match package version ${package_version} (${expected_tag})." >&2
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${package_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Ensure tag exists
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          tag="${{ steps.release.outputs.tag }}"
+          if ! git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            git tag "${tag}"
+            git push origin "refs/tags/${tag}"
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS artifacts
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run dist:mac
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'NOTES'
+          Download the DMG for the standard macOS installer, or the ZIP if you prefer a direct app archive.
+
+          This early build is distributed through GitHub Releases. Until Developer ID signing and notarization are configured, macOS may show an extra security prompt the first time you open the app.
+          NOTES
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ steps.release.outputs.tag }}"
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release upload "${tag}" release/*.dmg release/*.zip --clobber
+          else
+            gh release create "${tag}" release/*.dmg release/*.zip \
+              --title "Stoodio MD ${{ steps.release.outputs.version }}" \
+              --notes-file release-notes.md \
+              --latest
+          fi

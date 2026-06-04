@@ -597,9 +597,19 @@ img {
 @media (min-width: 768px) {
   .feature-highlight {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: 48px minmax(0, 1fr);
     gap: var(--space-xl);
-    align-items: center;
+    align-items: start;
+  }
+
+  .feature-highlight .feature-icon {
+    grid-row: 1 / span 2;
+    margin-bottom: 0;
+  }
+
+  .feature-highlight h3,
+  .feature-highlight p {
+    grid-column: 2;
   }
 }
 

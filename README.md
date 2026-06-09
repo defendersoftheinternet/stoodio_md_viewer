@@ -33,13 +33,7 @@ Stoodio MD is a Typora-inspired markdown editor that renders your content live a
 
 **Full Markdown Support** -- CommonMark and GitHub Flavored Markdown including tables, task lists, fenced code blocks, strikethrough, and more.
 
-## Screenshots
-
-<p align="center">
-  <img src="Menu Items/Menu Screenshot.png" alt="Stoodio MD Editor" width="700">
-</p>
-
-## Installation
+# Installation
 
 ### Download
 

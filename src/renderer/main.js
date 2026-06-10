@@ -288,8 +288,9 @@ async function switchTab(tabId) {
       if (editorEl) editorEl.scrollTop = newTab.scrollPos;
     }, 50);
 
-    // Update UI
-    updateFilename(newTab.path);
+    // Update UI (fall back to the tab name so renamed-but-unsaved
+    // documents keep their chosen name in the title bar)
+    updateFilename(newTab.path || newTab.name);
     renderTabs();
 
     // Notify main process of active tab change
@@ -1651,14 +1652,24 @@ async function togglePopover(e) {
   if (e && e.target.closest('.filename-popover')) return;
 
   if (!isPopoverOpen) {
-    if (window.electronAPI) {
+    // The active tab is the source of truth for the document name; the main
+    // process only supplies the display directory for saved files.
+    const tab = getActiveTab();
+    const displayName = (tab?.name || 'Untitled').replace(/\.md$/i, '');
+    if (nameInput) {
+      nameInput.value = displayName;
+      nameInput.dataset.original = displayName;
+    }
+
+    if (tab?.path && window.electronAPI) {
       try {
         const info = await window.electronAPI.getFileInfo();
-        if (nameInput) nameInput.value = (info.name || 'Untitled').replace('.md', '');
         if (locationText) locationText.textContent = info.directory || 'Not Saved';
       } catch (err) {
         console.error('Failed to get file info:', err);
       }
+    } else if (locationText) {
+      locationText.textContent = 'Not Saved';
     }
 
     popover.classList.add('show');
@@ -1780,18 +1791,38 @@ document.addEventListener('DOMContentLoaded', () => {
   const nameInput = document.getElementById('document-name');
 
   async function handleRename() {
+    const tab = getActiveTab();
     const newName = nameInput.value.trim();
-    if (newName && window.electronAPI) {
-      const result = await window.electronAPI.renameFile(newName);
-      if (result.success) {
-        updateFilename(result.newPath || newName);
-        if (result.newName) nameInput.value = result.newName.replace('.md', '');
-        // We generally close on enter, but maybe not on blur?
-        // Let's close on success if it was trigger by enter, handled below.
-      } else if (result.error) {
-        console.error('Rename failed:', result.error);
-        // revert?
+    if (!newName || !window.electronAPI || !tab) return;
+
+    // No change — nothing to commit. Also prevents the blur that follows
+    // an Enter commit from renaming a second time.
+    if (newName === nameInput.dataset.original) return;
+
+    const result = await window.electronAPI.renameFile(newName);
+    if (result.success) {
+      // The tab is the source of truth: update it so tab switches, saves,
+      // and active-tab-info reports all use the new name/path.
+      tab.name = result.newName || newName;
+      if (result.newPath) tab.path = result.newPath;
+      renderTabs();
+      updateFilename(tab.path || tab.name);
+      nameInput.dataset.original = tab.name.replace(/\.md$/i, '');
+      nameInput.value = nameInput.dataset.original;
+
+      window.electronAPI.setActiveTabInfo?.({
+        path: tab.path,
+        name: tab.name,
+        isModified: tab.isModified
+      });
+
+      // The file changed names on disk; reflect it in the file tree
+      if (tab.path && currentSidebarTab === 'files') {
+        refreshFileTree();
       }
+    } else if (result.error) {
+      console.error('Rename failed:', result.error);
+      nameInput.value = nameInput.dataset.original || '';
     }
   }
 
@@ -1800,28 +1831,61 @@ document.addEventListener('DOMContentLoaded', () => {
       await handleRename();
       closePopover();
     } else if (e.key === 'Escape') {
+      // Native behavior: Escape cancels the edit instead of committing it
+      nameInput.value = nameInput.dataset.original || '';
       closePopover();
     }
   });
 
-  // Save on blur as well
+  // Clicking away commits the rename, like the native popover
   nameInput?.addEventListener('blur', async () => {
-    // Only rename if popover is still arguably "open" logic, but blur happens when clicking away anyway.
     if (isPopoverOpen) {
       await handleRename();
     }
   });
 
-  // Handle location picker (Move)
+  // Handle location picker (Move). For unsaved documents, picking a
+  // location means "save it there" — same as the native popover.
   const locationPicker = document.getElementById('document-location');
   locationPicker?.addEventListener('click', async () => {
-    if (window.electronAPI) {
-      const result = await window.electronAPI.moveFile();
-      if (result.success) {
-        updateFilename(result.path);
-        // Update location text in the popover immediately
+    if (!window.electronAPI) return;
+
+    const tab = getActiveTab();
+    if (!tab) return;
+
+    if (!tab.path) {
+      const saved = await saveTab(tab);
+      if (saved && tab.path && window.electronAPI.getFileInfo) {
+        const info = await window.electronAPI.getFileInfo();
         const locationText = document.getElementById('location-text');
-        if (locationText) locationText.textContent = result.directory;
+        if (locationText) locationText.textContent = info.directory || 'Not Saved';
+        if (nameInput) {
+          nameInput.dataset.original = tab.name.replace(/\.md$/i, '');
+          nameInput.value = nameInput.dataset.original;
+        }
+      }
+      return;
+    }
+
+    const result = await window.electronAPI.moveFile();
+    if (result.success && result.path) {
+      tab.path = result.path;
+      tab.name = result.path.split('/').pop();
+      renderTabs();
+      updateFilename(tab.path);
+
+      window.electronAPI.setActiveTabInfo?.({
+        path: tab.path,
+        name: tab.name,
+        isModified: tab.isModified
+      });
+
+      // Update location text in the popover immediately
+      const locationText = document.getElementById('location-text');
+      if (locationText) locationText.textContent = result.directory;
+
+      if (currentSidebarTab === 'files') {
+        refreshFileTree();
       }
     }
   });

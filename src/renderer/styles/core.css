@@ -125,9 +125,16 @@ body {
   white-space: nowrap;
 }
 
+/* Like the native title bar, the chevron only appears on hover or while open */
 .filename-chevron {
-  opacity: 0.5;
+  opacity: 0;
   margin-top: 1px;
+  transition: opacity 0.15s;
+}
+
+.filename-container:hover .filename-chevron,
+.filename-container.active .filename-chevron {
+  opacity: 0.5;
 }
 
 /* ============================================

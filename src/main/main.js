@@ -6,6 +6,7 @@ const { SYSTEM_THEME, buildThemeMenuItems, resolveThemeId, getThemeBackground } 
 
 let mainWindow;
 let currentFilePath = null;
+let activeTabName = null; // Display name for a not-yet-saved active tab
 let rootFolderPath = null; // Root folder for file tree (set on first file open)
 let isDocumentModified = false;
 let currentTheme = SYSTEM_THEME;
@@ -279,7 +280,7 @@ function updateWindowTitle() {
 
   const fileName = currentFilePath
     ? path.basename(currentFilePath)
-    : 'Untitled';
+    : (activeTabName || 'Untitled');
   mainWindow.setTitle(fileName);
 
   // Native macOS document signals: dot in the close button for unsaved changes,
@@ -947,6 +948,7 @@ ipcMain.on('document-modified', () => {
 // Active tab info from renderer (for window title)
 ipcMain.on('active-tab-info', (event, info) => {
   currentFilePath = info.path;
+  activeTabName = info.name || null;
   isDocumentModified = info.isModified;
   updateWindowTitle();
 });
@@ -1004,14 +1006,14 @@ ipcMain.handle('get-file-info', async () => {
 });
 
 ipcMain.handle('rename-file', async (event, newName) => {
-  if (!currentFilePath) {
-    // For unsaved files, we can just return success and let the renderer update the title
-    // The actual save will happen when they hit save
-    return { success: true, newName };
-  }
-
   if (!newName.endsWith('.md')) {
     newName += '.md';
+  }
+
+  if (!currentFilePath) {
+    // Unsaved document: the renderer keeps the name on the tab,
+    // and it becomes the default filename on save
+    return { success: true, newName };
   }
 
   const directory = path.dirname(currentFilePath);
@@ -1031,7 +1033,7 @@ ipcMain.handle('rename-file', async (event, newName) => {
   }
 
   try {
-    fs.renameSync(currentFilePath, newPath);
+    await fsp.rename(currentFilePath, newPath);
     currentFilePath = newPath;
     updateWindowTitle();
     return { success: true, newPath, newName };
@@ -1074,7 +1076,7 @@ ipcMain.handle('move-file', async () => {
   }
 
   try {
-    fs.renameSync(currentFilePath, newPath);
+    await fsp.rename(currentFilePath, newPath);
     currentFilePath = newPath;
     updateWindowTitle();
 

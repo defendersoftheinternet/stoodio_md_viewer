@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onThemeChange: (callback) => ipcRenderer.on('theme-change', (event, themeName) => callback(themeName)),
   sendCurrentTheme: (themeName) => ipcRenderer.send('current-theme', themeName),
 
+  // Window state
+  onFullScreenChange: (callback) => ipcRenderer.on('fullscreen-change', (event, isFullScreen) => callback(isFullScreen)),
+
   // Export
   onPrepareForExport: (callback) => ipcRenderer.on('prepare-for-export', callback),
   onRequestHtmlExport: (callback) => ipcRenderer.on('request-html-export', callback),

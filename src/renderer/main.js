@@ -708,25 +708,39 @@ function updateFilename(path) {
 }
 
 // Theme management
-let currentTheme = 'github';
+// The stored value is the user's *choice*, which may be 'system'.
+// 'system' follows the macOS appearance via prefers-color-scheme,
+// mapping to the same light/dark pair as src/main/themes.js.
+const SYSTEM_THEME = 'system';
+const SYSTEM_LIGHT_THEME = 'github';
+const SYSTEM_DARK_THEME = 'github-dark';
+const systemDarkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+let currentTheme = SYSTEM_THEME;
+
+function resolveTheme(choice) {
+  if (choice === SYSTEM_THEME) {
+    return systemDarkQuery.matches ? SYSTEM_DARK_THEME : SYSTEM_LIGHT_THEME;
+  }
+  return choice;
+}
 
 function setTheme(themeName) {
   currentTheme = themeName;
-  document.documentElement.setAttribute('data-theme', themeName);
+  document.documentElement.setAttribute('data-theme', resolveTheme(themeName));
 
-  // Save to localStorage for persistence
+  // Save the choice to localStorage for persistence
   localStorage.setItem('stoodio-theme', themeName);
-
-  console.log('Theme changed to:', themeName);
 }
 
+// Re-resolve when the macOS appearance changes while following the system
+systemDarkQuery.addEventListener('change', () => {
+  if (currentTheme === SYSTEM_THEME) setTheme(SYSTEM_THEME);
+});
+
 function loadSavedTheme() {
-  const savedTheme = localStorage.getItem('stoodio-theme');
-  if (savedTheme) {
-    setTheme(savedTheme);
-    return savedTheme;
-  }
-  return 'github';
+  const savedTheme = localStorage.getItem('stoodio-theme') || SYSTEM_THEME;
+  setTheme(savedTheme);
+  return savedTheme;
 }
 
 // Sidebar tab switching
@@ -1425,6 +1439,7 @@ function clearFormatting() {
 function setupElectronListeners() {
   if (!window.electronAPI) {
     console.log('Running in browser mode (no Electron API)');
+    loadSavedTheme();
     return;
   }
 
@@ -1474,6 +1489,11 @@ function setupElectronListeners() {
   // Send current theme to main process on load
   const savedTheme = loadSavedTheme();
   window.electronAPI.sendCurrentTheme?.(savedTheme);
+
+  // Fullscreen: traffic lights hide, so the tab bar reclaims their space
+  window.electronAPI.onFullScreenChange?.((isFullScreen) => {
+    document.body.classList.toggle('fullscreen', isFullScreen);
+  });
 
   // Format commands
   window.electronAPI.onFormat((type) => {
@@ -1628,7 +1648,7 @@ async function togglePopover(e) {
       try {
         const info = await window.electronAPI.getFileInfo();
         if (nameInput) nameInput.value = (info.name || 'Untitled').replace('.md', '');
-        if (locationText) locationText.textContent = info.directory || 'Desktop — iCloud';
+        if (locationText) locationText.textContent = info.directory || 'Not Saved';
       } catch (err) {
         console.error('Failed to get file info:', err);
       }

@@ -1,19 +1,39 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { defaultTheme, buildThemeMenuItems } = require('./themes');
+const fsp = fs.promises;
+const { SYSTEM_THEME, buildThemeMenuItems, resolveThemeId, getThemeBackground } = require('./themes');
 
 let mainWindow;
 let currentFilePath = null;
 let rootFolderPath = null; // Root folder for file tree (set on first file open)
 let isDocumentModified = false;
-let currentTheme = defaultTheme;
+let currentTheme = SYSTEM_THEME;
 let allowWindowClose = false;
 let isCloseCheckPending = false;
 
-// Recent files
-const recentFilesPath = path.join(app.getPath('userData'), 'recent-files.json');
-let recentFiles = []; // Array of { path, name, timestamp }
+// Settings persisted in userData (theme choice is needed before the renderer loads,
+// so the window background can match and avoid a flash on launch)
+const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      if (saved.theme) currentTheme = saved.theme;
+    }
+  } catch (err) {
+    console.error('Failed to load settings:', err);
+  }
+}
+
+function saveSettings() {
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify({ theme: currentTheme }, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to save settings:', err);
+  }
+}
 
 // Window state persistence
 const windowStatePath = path.join(app.getPath('userData'), 'window-state.json');
@@ -60,10 +80,34 @@ function saveWindowState() {
   }
 }
 
+// If the saved position is no longer on any connected display (e.g. a monitor
+// was unplugged), discard it so the window opens centered on the primary display.
+function validateWindowPosition() {
+  if (windowState.x === undefined || windowState.y === undefined) return;
+
+  const visible = screen.getAllDisplays().some(display => {
+    const area = display.workArea;
+    return (
+      windowState.x + windowState.width > area.x &&
+      windowState.x < area.x + area.width &&
+      windowState.y + windowState.height > area.y &&
+      windowState.y < area.y + area.height
+    );
+  });
+
+  if (!visible) {
+    windowState.x = undefined;
+    windowState.y = undefined;
+  }
+}
+
 function createWindow() {
   loadWindowState();
+  validateWindowPosition();
   allowWindowClose = false;
   isCloseCheckPending = false;
+
+  const resolvedTheme = resolveThemeId(currentTheme, nativeTheme.shouldUseDarkColors);
 
   mainWindow = new BrowserWindow({
     width: windowState.width,
@@ -74,12 +118,70 @@ function createWindow() {
     minHeight: 400,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
+    backgroundColor: getThemeBackground(resolvedTheme),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      spellcheck: true,
       preload: path.join(__dirname, 'preload.js')
     }
+  });
+
+  // Native-style context menu: spelling suggestions, Look Up, and edit actions
+  mainWindow.webContents.on('context-menu', (event, params) => {
+    const items = [];
+
+    if (params.misspelledWord) {
+      for (const suggestion of params.dictionarySuggestions) {
+        items.push({
+          label: suggestion,
+          click: () => mainWindow.webContents.replaceMisspelling(suggestion)
+        });
+      }
+      if (params.dictionarySuggestions.length === 0) {
+        items.push({ label: 'No Guesses Found', enabled: false });
+      }
+      items.push({ type: 'separator' });
+      items.push({
+        label: `Learn Spelling`,
+        click: () => mainWindow.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord)
+      });
+      items.push({ type: 'separator' });
+    }
+
+    if (params.selectionText && process.platform === 'darwin') {
+      const trimmed = params.selectionText.trim();
+      const display = trimmed.length > 30 ? `${trimmed.slice(0, 30)}…` : trimmed;
+      items.push({
+        label: `Look Up “${display}”`,
+        click: () => mainWindow.webContents.showDefinitionForSelection()
+      });
+      items.push({ type: 'separator' });
+    }
+
+    if (params.isEditable) {
+      items.push(
+        { role: 'cut', enabled: params.editFlags.canCut },
+        { role: 'copy', enabled: params.editFlags.canCopy },
+        { role: 'paste', enabled: params.editFlags.canPaste },
+        { type: 'separator' },
+        { role: 'selectAll' }
+      );
+    } else if (params.selectionText) {
+      items.push({ role: 'copy' });
+    }
+
+    if (items.length === 0) return;
+    Menu.buildFromTemplate(items).popup({ window: mainWindow });
+  });
+
+  // Let the renderer adapt layout when the traffic lights hide in fullscreen
+  mainWindow.on('enter-full-screen', () => {
+    mainWindow?.webContents.send('fullscreen-change', true);
+  });
+  mainWindow.on('leave-full-screen', () => {
+    mainWindow?.webContents.send('fullscreen-change', false);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -178,8 +280,12 @@ function updateWindowTitle() {
   const fileName = currentFilePath
     ? path.basename(currentFilePath)
     : 'Untitled';
-  const modified = isDocumentModified ? ' — Edited' : '';
-  mainWindow.setTitle(`${fileName}${modified}`);
+  mainWindow.setTitle(fileName);
+
+  // Native macOS document signals: dot in the close button for unsaved changes,
+  // and the window's represented file (proxy icon behavior, Mission Control grouping)
+  mainWindow.setDocumentEdited(isDocumentModified);
+  mainWindow.setRepresentedFilename(currentFilePath || '');
 }
 
 // Build menu template (function so we can rebuild with updated theme state)
@@ -188,19 +294,7 @@ function buildMenuTemplate() {
     {
       label: app.name,
       submenu: [
-        {
-          label: 'About Stoodio MD',
-          click: () => {
-            const version = app.getVersion();
-            dialog.showMessageBox(mainWindow, {
-              type: 'info',
-              title: 'About Stoodio MD',
-              message: 'Stoodio MD',
-              detail: `Version ${version}\n\nA beautiful markdown editor with live preview.\n\n© 2024-2026 Stoodio`,
-              buttons: ['OK']
-            });
-          }
-        },
+        { role: 'about' },
         {
           label: 'Check for Updates...',
           click: () => {
@@ -251,24 +345,10 @@ function buildMenuTemplate() {
         },
         {
           label: 'Open Recent',
-          submenu: recentFiles.length > 0
-            ? [
-                ...recentFiles.map(file => ({
-                  label: file.name,
-                  click: () => openRecentFile(file.path)
-                })),
-                { type: 'separator' },
-                {
-                  label: 'Clear Recent',
-                  click: () => clearRecentFiles()
-                }
-              ]
-            : [
-                {
-                  label: 'No Recent Files',
-                  enabled: false
-                }
-              ]
+          role: 'recentDocuments',
+          submenu: [
+            { label: 'Clear Menu', role: 'clearRecentDocuments' }
+          ]
         },
         { type: 'separator' },
         {
@@ -323,7 +403,7 @@ function buildMenuTemplate() {
           click: () => mainWindow?.webContents.send('copy-as-html')
         },
         {
-          label: 'Paste as Plain Text',
+          label: 'Paste and Match Style',
           accelerator: 'CmdOrCtrl+Alt+Shift+V',
           click: () => mainWindow?.webContents.send('paste-plain-text')
         },
@@ -338,7 +418,7 @@ function buildMenuTemplate() {
             },
             {
               label: 'Find and Replace...',
-              accelerator: 'CmdOrCtrl+H',
+              accelerator: 'CmdOrCtrl+Alt+F',
               enabled: false,
               click: () => mainWindow?.webContents.send('find-replace')
             },
@@ -354,6 +434,19 @@ function buildMenuTemplate() {
               click: () => mainWindow?.webContents.send('find-previous')
             }
           ]
+        },
+        { type: 'separator' },
+        {
+          label: 'Speech',
+          submenu: [
+            { role: 'startSpeaking' },
+            { role: 'stopSpeaking' }
+          ]
+        },
+        {
+          label: 'Emoji & Symbols',
+          accelerator: 'Cmd+Ctrl+Space',
+          click: () => app.showEmojiPanel()
         }
       ]
     },
@@ -544,13 +637,28 @@ function buildMenuTemplate() {
         { role: 'zoom' },
         { type: 'separator' },
         {
+          label: 'Show Next Tab',
+          accelerator: 'Cmd+Shift+]',
+          click: () => mainWindow?.webContents.send('next-tab')
+        },
+        {
+          label: 'Show Previous Tab',
+          accelerator: 'Cmd+Shift+[',
+          click: () => mainWindow?.webContents.send('prev-tab')
+        },
+        // Hidden items so the conventional Ctrl+Tab cycling also works
+        {
           label: 'Select Next Tab',
           accelerator: 'Ctrl+Tab',
+          visible: false,
+          acceleratorWorksWhenHidden: true,
           click: () => mainWindow?.webContents.send('next-tab')
         },
         {
           label: 'Select Previous Tab',
           accelerator: 'Ctrl+Shift+Tab',
+          visible: false,
+          acceleratorWorksWhenHidden: true,
           click: () => mainWindow?.webContents.send('prev-tab')
         },
         { type: 'separator' },
@@ -612,14 +720,14 @@ async function openDocument() {
   if (!result.canceled && result.filePaths.length > 0) {
     const filePath = result.filePaths[0];
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
+      const content = await fsp.readFile(filePath, 'utf-8');
       currentFilePath = filePath;
       // Set root folder on first file open (File > Open always resets root)
       rootFolderPath = path.dirname(filePath);
       isDocumentModified = false;
       mainWindow?.webContents.send('file-opened', { path: filePath, content, isNewRoot: true });
       updateWindowTitle();
-      addToRecentFiles(filePath);
+      app.addRecentDocument(filePath);
     } catch (err) {
       dialog.showErrorBox('Error', `Failed to open file: ${err.message}`);
     }
@@ -682,7 +790,7 @@ async function exportToPDF() {
       }
     });
 
-    fs.writeFileSync(result.filePath, pdfData);
+    await fsp.writeFile(result.filePath, pdfData);
     shell.showItemInFolder(result.filePath);
   } catch (err) {
     dialog.showErrorBox('Export Failed', `Failed to export PDF: ${err.message}`);
@@ -721,47 +829,51 @@ async function insertImage() {
   if (result.canceled || !result.filePaths.length) return;
 
   const imagePath = result.filePaths[0];
-  const imageFileName = path.basename(imagePath);
 
-  let targetDir;
-  if (currentFilePath) {
-    targetDir = path.join(path.dirname(currentFilePath), 'assets');
-  } else {
-    targetDir = path.join(app.getPath('temp'), 'stoodio-assets');
+  try {
+    const { destPath, destFileName } = await resolveAssetDestination(path.basename(imagePath));
+    await fsp.copyFile(imagePath, destPath);
+    mainWindow?.webContents.send('insert-image', { src: `assets/${destFileName}`, alt: destFileName, title: '' });
+  } catch (err) {
+    dialog.showErrorBox('Error', `Failed to insert image: ${err.message}`);
   }
+}
 
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
+// Pick a unique destination in the document's assets folder.
+// Uses basename() so a renderer-supplied name can't escape the folder.
+async function resolveAssetDestination(fileName) {
+  const targetDir = currentFilePath
+    ? path.join(path.dirname(currentFilePath), 'assets')
+    : path.join(app.getPath('temp'), 'stoodio-assets');
 
-  // Deduplicate filename
-  let destFileName = imageFileName;
+  await fsp.mkdir(targetDir, { recursive: true });
+
+  const safeName = path.basename(fileName);
+  const ext = path.extname(safeName);
+  const base = path.basename(safeName, ext);
+
+  let destFileName = safeName;
   let destPath = path.join(targetDir, destFileName);
   let counter = 1;
   while (fs.existsSync(destPath)) {
-    const ext = path.extname(imageFileName);
-    const base = path.basename(imageFileName, ext);
     destFileName = `${base}-${counter}${ext}`;
     destPath = path.join(targetDir, destFileName);
     counter++;
   }
 
-  fs.copyFileSync(imagePath, destPath);
-
-  const relativePath = `assets/${destFileName}`;
-  mainWindow?.webContents.send('insert-image', { src: relativePath, alt: destFileName, title: '' });
+  return { destPath, destFileName };
 }
 
 // IPC handlers
-function writeMarkdownFile(filePath, content) {
-  fs.writeFileSync(filePath, content, 'utf-8');
-  addToRecentFiles(filePath);
+async function writeMarkdownFile(filePath, content) {
+  await fsp.writeFile(filePath, content, 'utf-8');
+  app.addRecentDocument(filePath);
 }
 
-ipcMain.on('content-for-save', (event, content) => {
+ipcMain.on('content-for-save', async (event, content) => {
   if (currentFilePath) {
     try {
-      writeMarkdownFile(currentFilePath, content);
+      await writeMarkdownFile(currentFilePath, content);
       isDocumentModified = false;
       updateWindowTitle();
       // Notify renderer that save completed successfully
@@ -792,7 +904,7 @@ ipcMain.handle('save-tab-content', async (event, { path: requestedPath, content,
   }
 
   try {
-    writeMarkdownFile(targetPath, content || '');
+    await writeMarkdownFile(targetPath, content || '');
 
     if (isActive) {
       currentFilePath = targetPath;
@@ -807,45 +919,23 @@ ipcMain.handle('save-tab-content', async (event, { path: requestedPath, content,
   }
 });
 
-ipcMain.on('html-export-content', (event, htmlContent) => {
+ipcMain.on('html-export-content', async (event, htmlContent) => {
   if (!pendingExportPath) return;
+  const exportPath = pendingExportPath;
+  pendingExportPath = null;
 
   try {
-    fs.writeFileSync(pendingExportPath, htmlContent, 'utf-8');
-    shell.showItemInFolder(pendingExportPath);
+    await fsp.writeFile(exportPath, htmlContent, 'utf-8');
+    shell.showItemInFolder(exportPath);
   } catch (err) {
     dialog.showErrorBox('Export Failed', `Failed to export HTML: ${err.message}`);
   }
-
-  pendingExportPath = null;
 });
 
 // Save image from renderer (drag-drop or clipboard paste)
 ipcMain.handle('save-image', async (event, { buffer, fileName }) => {
-  let targetDir;
-  if (currentFilePath) {
-    targetDir = path.join(path.dirname(currentFilePath), 'assets');
-  } else {
-    targetDir = path.join(app.getPath('temp'), 'stoodio-assets');
-  }
-
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
-
-  // Deduplicate filename
-  let destFileName = fileName;
-  let destPath = path.join(targetDir, destFileName);
-  let counter = 1;
-  while (fs.existsSync(destPath)) {
-    const ext = path.extname(fileName);
-    const base = path.basename(fileName, ext);
-    destFileName = `${base}-${counter}${ext}`;
-    destPath = path.join(targetDir, destFileName);
-    counter++;
-  }
-
-  fs.writeFileSync(destPath, Buffer.from(buffer));
+  const { destPath, destFileName } = await resolveAssetDestination(fileName);
+  await fsp.writeFile(destPath, Buffer.from(buffer));
   return { src: `assets/${destFileName}` };
 });
 
@@ -890,12 +980,11 @@ ipcMain.handle('get-file-info', async () => {
     return {
       path: null,
       name: 'Untitled.md',
-      directory: 'Desktop — iCloud',
+      directory: 'Not Saved',
       isLocked: false
     };
   }
 
-  const stats = fs.statSync(currentFilePath);
   const directory = path.dirname(currentFilePath);
   const name = path.basename(currentFilePath);
 
@@ -1076,13 +1165,13 @@ function getDirectoryItems(dirPath, currentFilePath) {
 // Open a file from file tree (does NOT change root folder)
 ipcMain.handle('open-file-from-tree', async (event, filePath) => {
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = await fsp.readFile(filePath, 'utf-8');
     currentFilePath = filePath;
     // Don't change rootFolderPath - keep the original root
     isDocumentModified = false;
     mainWindow?.webContents.send('file-opened', { path: filePath, content, isNewRoot: false });
     updateWindowTitle();
-    addToRecentFiles(filePath);
+    app.addRecentDocument(filePath);
     return { success: true, currentFilePath: filePath };
   } catch (err) {
     dialog.showErrorBox('Error', `Failed to open file: ${err.message}`);
@@ -1090,9 +1179,11 @@ ipcMain.handle('open-file-from-tree', async (event, filePath) => {
   }
 });
 
-// Theme handling
+// Theme handling. currentTheme is the user's choice (may be 'system');
+// the renderer resolves 'system' against the OS appearance when applying it.
 function setTheme(themeName) {
   currentTheme = themeName;
+  saveSettings();
   mainWindow?.webContents.send('theme-change', themeName);
   updateThemeMenu();
 }
@@ -1105,7 +1196,9 @@ function updateThemeMenu() {
 }
 
 ipcMain.on('current-theme', (event, themeName) => {
+  if (themeName === currentTheme) return;
   currentTheme = themeName;
+  saveSettings();
   updateThemeMenu();
 });
 
@@ -1184,82 +1277,23 @@ ipcMain.handle('show-path-menu', async (event, position) => {
   });
 });
 
-// Recent files management
-function loadRecentFiles() {
+// One-time migration: recent files used to be tracked in a custom JSON file.
+// Seed the native macOS recent documents list from it, then remove it.
+function migrateLegacyRecentFiles() {
+  const legacyPath = path.join(app.getPath('userData'), 'recent-files.json');
   try {
-    if (fs.existsSync(recentFilesPath)) {
-      const data = fs.readFileSync(recentFilesPath, 'utf-8');
-      recentFiles = JSON.parse(data);
-      // Filter out files that no longer exist
-      recentFiles = recentFiles.filter(f => fs.existsSync(f.path));
-    }
+    if (!fs.existsSync(legacyPath)) return;
+    const entries = JSON.parse(fs.readFileSync(legacyPath, 'utf-8'));
+    // Reverse so the most recent entry ends up at the top of the native list
+    [...entries].reverse().forEach(entry => {
+      if (entry.path && fs.existsSync(entry.path)) {
+        app.addRecentDocument(entry.path);
+      }
+    });
+    fs.unlinkSync(legacyPath);
   } catch (err) {
-    console.error('Failed to load recent files:', err);
-    recentFiles = [];
+    console.error('Failed to migrate legacy recent files:', err);
   }
-}
-
-function saveRecentFiles() {
-  try {
-    fs.writeFileSync(recentFilesPath, JSON.stringify(recentFiles, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Failed to save recent files:', err);
-  }
-}
-
-function addToRecentFiles(filePath) {
-  const name = path.basename(filePath);
-
-  // Remove if already exists (to move to top)
-  recentFiles = recentFiles.filter(f => f.path !== filePath);
-
-  // Add to beginning
-  recentFiles.unshift({
-    path: filePath,
-    name: name,
-    timestamp: Date.now()
-  });
-
-  // Keep only last 10
-  recentFiles = recentFiles.slice(0, 10);
-
-  saveRecentFiles();
-  updateApplicationMenu();
-}
-
-function clearRecentFiles() {
-  recentFiles = [];
-  saveRecentFiles();
-  updateApplicationMenu();
-}
-
-async function openRecentFile(filePath) {
-  if (!fs.existsSync(filePath)) {
-    // File no longer exists, remove from recent and show error
-    recentFiles = recentFiles.filter(f => f.path !== filePath);
-    saveRecentFiles();
-    updateApplicationMenu();
-    dialog.showErrorBox('File Not Found', `The file "${path.basename(filePath)}" could not be found.`);
-    return;
-  }
-
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    currentFilePath = filePath;
-    rootFolderPath = path.dirname(filePath);
-    isDocumentModified = false;
-    mainWindow?.webContents.send('file-opened', { path: filePath, content, isNewRoot: true });
-    updateWindowTitle();
-    addToRecentFiles(filePath);
-  } catch (err) {
-    dialog.showErrorBox('Error', `Failed to open file: ${err.message}`);
-  }
-}
-
-function updateApplicationMenu() {
-  const menuTemplate = buildMenuTemplate();
-  const newMenu = Menu.buildFromTemplate(menuTemplate);
-  Menu.setApplicationMenu(newMenu);
 }
 
 // App lifecycle
@@ -1269,12 +1303,13 @@ app.whenReady().then(() => {
     applicationName: 'Stoodio MD',
     applicationVersion: app.getVersion(),
     version: '', // Build number (optional)
-    copyright: '© 2024 Stoodio',
+    copyright: '© 2024–2026 Stoodio',
     credits: 'A beautiful markdown editor with live preview.\n\nBuilt with Electron and Milkdown.',
     website: 'https://stoodio.app'
   });
 
-  loadRecentFiles();
+  loadSettings();
+  migrateLegacyRecentFiles();
   const menu = Menu.buildFromTemplate(buildMenuTemplate());
   Menu.setApplicationMenu(menu);
   createWindow();
@@ -1318,13 +1353,13 @@ async function openFileFromPath(filePath) {
   }
 
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = await fsp.readFile(filePath, 'utf-8');
     currentFilePath = filePath;
     rootFolderPath = path.dirname(filePath);
     isDocumentModified = false;
     mainWindow?.webContents.send('file-opened', { path: filePath, content, isNewRoot: true });
     updateWindowTitle();
-    addToRecentFiles(filePath);
+    app.addRecentDocument(filePath);
 
     // Bring window to front
     if (mainWindow) {
@@ -1336,13 +1371,12 @@ async function openFileFromPath(filePath) {
   }
 }
 
-// Handle pending file after window is ready
+// Handle pending file after window is ready.
+// did-finish-load fires after the renderer's module scripts have run and
+// registered their IPC listeners, so the file can be sent immediately.
 function handlePendingFile() {
   if (pendingFilePath) {
-    // Small delay to ensure renderer is ready
-    setTimeout(() => {
-      openFileFromPath(pendingFilePath);
-      pendingFilePath = null;
-    }, 500);
+    openFileFromPath(pendingFilePath);
+    pendingFilePath = null;
   }
 }

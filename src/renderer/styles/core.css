@@ -214,23 +214,6 @@ body {
   box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25);
 }
 
-.tags-input-container {
-  flex: 1;
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  min-height: 28px;
-  display: flex;
-  align-items: center;
-  padding: 0 4px;
-}
-
-.tags-input-container input {
-  border: none !important;
-  box-shadow: none !important;
-  width: 100%;
-}
-
 .location-picker {
   flex: 1;
   background: #dbdbdb;
@@ -255,22 +238,6 @@ body {
 
 .location-picker svg {
   opacity: 0.6;
-}
-
-.locked-container {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.locked-container input {
-  margin: 0;
-}
-
-.locked-container label {
-  width: auto;
-  font-size: 13px;
-  color: #999;
 }
 
 [data-theme="github-dark"] .filename-popover,
@@ -313,13 +280,6 @@ body {
 [data-theme="night"] .location-picker:hover,
 [data-theme="dracula"] .location-picker:hover {
   background: #444;
-}
-
-[data-theme="github-dark"] .tags-input-container,
-[data-theme="night"] .tags-input-container,
-[data-theme="dracula"] .tags-input-container {
-  background: #1e1e1e;
-  border-color: #444;
 }
 
 .titlebar-btn {
@@ -367,6 +327,11 @@ body {
   border-bottom: 1px solid var(--border-color);
   z-index: 99;
   padding: 0 8px 0 80px; /* Left padding for traffic lights */
+}
+
+/* Traffic lights are hidden in fullscreen, so reclaim their space */
+body.fullscreen .tab-bar {
+  padding-left: 8px;
 }
 
 .tabs-container {

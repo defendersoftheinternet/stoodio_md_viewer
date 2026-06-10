@@ -169,8 +169,9 @@ const clipboardImagePlugin = $prose(() => {
   });
 });
 
-// Default content for new documents
-const defaultContent = `# Welcome to Stoodio MD
+// Welcome document, shown only on the very first launch.
+// New documents otherwise start empty (with an editor placeholder).
+const welcomeContent = `# Welcome to Stoodio MD
 
 A minimal markdown editor with live preview.
 
@@ -211,7 +212,7 @@ Happy writing!
 `;
 
 let crepe = null;
-let currentContent = defaultContent;
+let currentContent = '';
 let isSourceMode = false;
 let isPopoverOpen = false;
 let currentSidebarTab = 'outline';
@@ -231,7 +232,7 @@ function getActiveTab() {
 }
 
 // Create a new tab
-function createTab(path = null, content = defaultContent, switchTo = true) {
+function createTab(path = null, content = '', switchTo = true) {
   // Check if file is already open
   if (path) {
     const existingTab = tabs.find(t => t.path === path);
@@ -560,7 +561,7 @@ const tableCommands = {
 };
 
 // Initialize the editor
-async function initEditor(content = defaultContent) {
+async function initEditor(content = '') {
   console.log('Initializing editor...');
   currentContent = content;
   isSourceMode = false;
@@ -583,6 +584,12 @@ async function initEditor(content = defaultContent) {
     crepe = new Crepe({
       root: '#editor',
       defaultValue: content,
+      featureConfigs: {
+        [CrepeFeature.Placeholder]: {
+          text: 'Start writing, or type / for commands',
+          mode: 'doc'
+        }
+      }
     });
 
     // Add custom plugins
@@ -1880,8 +1887,14 @@ document.addEventListener('DOMContentLoaded', () => {
 // Initialize
 setupElectronListeners();
 
-// Create initial tab
-createTab();
+// Create initial tab. The welcome document appears once, on first launch;
+// every other new document starts empty.
+if (!localStorage.getItem('stoodio-welcomed')) {
+  localStorage.setItem('stoodio-welcomed', 'true');
+  createTab(null, welcomeContent);
+} else {
+  createTab();
+}
 
 // New tab button listener
 document.getElementById('new-tab-btn')?.addEventListener('click', () => {

@@ -1042,52 +1042,129 @@ ipcMain.handle('rename-file', async (event, newName) => {
   }
 });
 
-ipcMain.handle('move-file', async () => {
-  if (!currentFilePath) {
-    return { success: false, error: 'File must be saved first.' };
+// Shorten a directory for display, like the native popover does
+function displayDirectory(dir) {
+  const homeDir = app.getPath('home');
+  return dir.startsWith(homeDir) ? dir.replace(homeDir, '~') : dir;
+}
+
+// The native "Where:" control is a pop-up menu of common locations with an
+// "Other…" escape hatch to the full folder picker. Resolves with the chosen
+// directory, or { cancelled: true } if the menu was dismissed.
+ipcMain.handle('show-location-menu', async (event, position) => {
+  const home = app.getPath('home');
+  const candidates = [
+    { label: 'iCloud Drive', path: path.join(home, 'Library/Mobile Documents/com~apple~CloudDocs') },
+    { label: 'Desktop', path: app.getPath('desktop') },
+    { label: 'Documents', path: app.getPath('documents') },
+    { label: 'Downloads', path: app.getPath('downloads') }
+  ].filter(loc => fs.existsSync(loc.path));
+
+  // Show the document's current folder at the top, like the native menu
+  const currentDir = currentFilePath ? path.dirname(currentFilePath) : null;
+  if (currentDir && !candidates.some(loc => loc.path === currentDir)) {
+    candidates.unshift({ label: path.basename(currentDir), path: currentDir });
   }
 
-  // Open directory picker
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory', 'createDirectory'],
-    buttonLabel: 'Move Here',
-    title: 'Move Document to Folder'
+  const iconSize = { width: 16, height: 16 };
+  const locations = await Promise.all(candidates.map(async (loc) => {
+    let icon = null;
+    try {
+      icon = (await app.getFileIcon(loc.path, { size: 'small' })).resize(iconSize);
+    } catch {
+      // Menu item simply renders without an icon
+    }
+    return { ...loc, icon };
+  }));
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    const pick = (value) => {
+      resolved = true;
+      resolve(value);
+    };
+
+    const template = [
+      ...locations.map(loc => ({
+        label: loc.label,
+        icon: loc.icon,
+        type: 'checkbox',
+        checked: loc.path === currentDir,
+        click: () => pick({ directory: loc.path })
+      })),
+      { type: 'separator' },
+      {
+        label: 'Other…',
+        click: async () => {
+          const result = await dialog.showOpenDialog(mainWindow, {
+            properties: ['openDirectory', 'createDirectory'],
+            buttonLabel: 'Choose',
+            title: 'Choose a Folder'
+          });
+          if (result.canceled || result.filePaths.length === 0) {
+            pick({ cancelled: true });
+          } else {
+            pick({ directory: result.filePaths[0] });
+          }
+        }
+      }
+    ];
+
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({
+      window: mainWindow,
+      x: position?.x,
+      y: position?.y,
+      // The close callback fires before item clicks; give a click a moment
+      // to resolve first, then treat the dismissal as a cancel.
+      callback: () => {
+        setTimeout(() => {
+          if (!resolved) resolve({ cancelled: true });
+        }, 200);
+      }
+    });
   });
+});
 
-  if (result.canceled || result.filePaths.length === 0) {
-    return { success: false, cancelled: true };
+// Move a saved document to a folder, or save an unsaved one there
+// (the native popover treats both as "put this document here").
+ipcMain.handle('move-document-to', async (event, { directory, fileName, content }) => {
+  let name = fileName || 'Untitled.md';
+  if (!name.endsWith('.md')) name += '.md';
+
+  const newPath = path.join(directory, path.basename(name));
+
+  if (newPath === currentFilePath) {
+    return { success: true, path: newPath, directory: displayDirectory(directory), didSave: false };
   }
-
-  const targetDir = result.filePaths[0];
-  const fileName = path.basename(currentFilePath);
-  const newPath = path.join(targetDir, fileName);
-
-  if (newPath === currentFilePath) return { success: true, path: currentFilePath, directory: targetDir };
 
   if (fs.existsSync(newPath)) {
     const overwrite = await dialog.showMessageBox(mainWindow, {
       type: 'warning',
       buttons: ['Replace', 'Cancel'],
       defaultId: 1,
-      message: `A file named "${fileName}" already exists in the destination folder. Do you want to replace it?`
+      message: `A file named "${path.basename(newPath)}" already exists in this location. Do you want to replace it?`
     });
 
     if (overwrite.response === 1) return { success: false, cancelled: true };
   }
 
   try {
-    await fsp.rename(currentFilePath, newPath);
-    currentFilePath = newPath;
-    updateWindowTitle();
-
-    // Calculate display directory
-    let displayDir = targetDir;
-    const homeDir = app.getPath('home');
-    if (targetDir.startsWith(homeDir)) {
-      displayDir = targetDir.replace(homeDir, '~');
+    let didSave = false;
+    if (currentFilePath) {
+      await fsp.rename(currentFilePath, newPath);
+    } else {
+      // Unsaved document: choosing a location saves it there
+      await fsp.writeFile(newPath, content || '', 'utf-8');
+      didSave = true;
     }
 
-    return { success: true, path: newPath, directory: displayDir };
+    currentFilePath = newPath;
+    if (didSave) isDocumentModified = false;
+    app.addRecentDocument(newPath);
+    updateWindowTitle();
+
+    return { success: true, path: newPath, directory: displayDirectory(directory), didSave };
   } catch (err) {
     dialog.showErrorBox('Move Failed', err.message);
     return { success: false, error: err.message };

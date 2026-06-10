@@ -1844,49 +1844,59 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Handle location picker (Move). For unsaved documents, picking a
-  // location means "save it there" — same as the native popover.
+  // Handle location picker. Like the native popover, "Where:" is a pop-up
+  // menu of common locations plus "Other…"; choosing one moves a saved
+  // document there, or saves an unsaved document there.
   const locationPicker = document.getElementById('document-location');
   locationPicker?.addEventListener('click', async () => {
-    if (!window.electronAPI) return;
+    if (!window.electronAPI?.showLocationMenu) return;
 
     const tab = getActiveTab();
     if (!tab) return;
 
-    if (!tab.path) {
-      const saved = await saveTab(tab);
-      if (saved && tab.path && window.electronAPI.getFileInfo) {
-        const info = await window.electronAPI.getFileInfo();
-        const locationText = document.getElementById('location-text');
-        if (locationText) locationText.textContent = info.directory || 'Not Saved';
-        if (nameInput) {
-          nameInput.dataset.original = tab.name.replace(/\.md$/i, '');
-          nameInput.value = nameInput.dataset.original;
-        }
-      }
-      return;
+    const rect = locationPicker.getBoundingClientRect();
+    const choice = await window.electronAPI.showLocationMenu({
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom + 4)
+    });
+
+    if (!choice || choice.cancelled || !choice.directory) return;
+
+    // Capture current content in case this turns into a first save
+    if (tab.id === activeTabId) {
+      tab.content = getMarkdown();
     }
 
-    const result = await window.electronAPI.moveFile();
-    if (result.success && result.path) {
-      tab.path = result.path;
-      tab.name = result.path.split('/').pop();
-      renderTabs();
-      updateFilename(tab.path);
+    const result = await window.electronAPI.moveDocumentTo({
+      directory: choice.directory,
+      fileName: tab.name || 'Untitled.md',
+      content: tab.content
+    });
 
-      window.electronAPI.setActiveTabInfo?.({
-        path: tab.path,
-        name: tab.name,
-        isModified: tab.isModified
-      });
+    if (!result?.success || !result.path) return;
 
-      // Update location text in the popover immediately
-      const locationText = document.getElementById('location-text');
-      if (locationText) locationText.textContent = result.directory;
+    tab.path = result.path;
+    tab.name = result.path.split('/').pop();
+    if (result.didSave) tab.isModified = false;
+    renderTabs();
+    updateFilename(tab.path);
 
-      if (currentSidebarTab === 'files') {
-        refreshFileTree();
-      }
+    window.electronAPI.setActiveTabInfo?.({
+      path: tab.path,
+      name: tab.name,
+      isModified: tab.isModified
+    });
+
+    // Update the popover in place
+    const locationText = document.getElementById('location-text');
+    if (locationText) locationText.textContent = result.directory;
+    if (nameInput) {
+      nameInput.dataset.original = tab.name.replace(/\.md$/i, '');
+      nameInput.value = nameInput.dataset.original;
+    }
+
+    if (currentSidebarTab === 'files') {
+      refreshFileTree();
     }
   });
 

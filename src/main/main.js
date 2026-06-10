@@ -1387,6 +1387,16 @@ app.whenReady().then(() => {
     website: 'https://stoodio.app'
   });
 
+  // Unpackaged runs (dev/preview) don't get the bundle's icns icon,
+  // so set the Dock icon manually
+  if (!app.isPackaged && process.platform === 'darwin') {
+    try {
+      app.dock.setIcon(path.join(__dirname, '../../build/icon.png'));
+    } catch (err) {
+      console.error('Failed to set dev dock icon:', err);
+    }
+  }
+
   loadSettings();
   migrateLegacyRecentFiles();
   const menu = Menu.buildFromTemplate(buildMenuTemplate());

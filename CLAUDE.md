@@ -113,8 +113,8 @@ await crepe.create();
 const markdown = crepe.getMarkdown();
 
 // Execute commands
-crepe.action(callCommand(toggleStrongCommand.key));
-crepe.action(callCommand(wrapInHeadingCommand.key, 1)); // H1
+crepe.editor.action(callCommand(toggleStrongCommand.key));
+crepe.editor.action(callCommand(wrapInHeadingCommand.key, 1)); // H1
 
 // Listen for updates
 crepe.on((listener) => {

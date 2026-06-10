@@ -24,8 +24,9 @@ import {
 } from '@milkdown/preset-gfm';
 import { callCommand, $prose, $markSchema, $command } from '@milkdown/utils';
 import { toggleMark } from '@milkdown/prose/commands';
-import { editorViewCtx } from '@milkdown/core';
-import { Plugin, PluginKey } from '@milkdown/prose/state';
+import { editorViewCtx, parserCtx } from '@milkdown/core';
+import { Plugin, PluginKey, EditorState } from '@milkdown/prose/state';
+import { Decoration, DecorationSet } from '@milkdown/prose/view';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
 import './styles/core.css';
@@ -169,6 +170,95 @@ const clipboardImagePlugin = $prose(() => {
   });
 });
 
+// Find & Replace plugin. Search state lives in the editor state and
+// highlights are decorations, so ProseMirror's document model stays in
+// sync and replacements go through transactions (making them undoable).
+const findPluginKey = new PluginKey('STOODIO_FIND');
+const emptyFindState = { query: '', matchCase: false, matches: [], index: -1 };
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function computeFindMatches(doc, query, matchCase) {
+  if (!query) return [];
+  const matches = [];
+  const regex = new RegExp(escapeRegExp(query), matchCase ? 'g' : 'gi');
+
+  doc.descendants((node, pos) => {
+    if (!node.isText) return true;
+    let match;
+    regex.lastIndex = 0;
+    while ((match = regex.exec(node.text)) !== null) {
+      matches.push({ from: pos + match.index, to: pos + match.index + match[0].length });
+      if (match.index === regex.lastIndex) regex.lastIndex++;
+    }
+    return true;
+  });
+
+  return matches;
+}
+
+const findHighlightPlugin = $prose(() => new Plugin({
+  key: findPluginKey,
+  state: {
+    init: () => emptyFindState,
+    apply(tr, value, _oldState, newState) {
+      const meta = tr.getMeta(findPluginKey);
+
+      if (meta?.type === 'clear') {
+        return emptyFindState;
+      }
+
+      if (meta?.type === 'search') {
+        const matches = computeFindMatches(newState.doc, meta.query, meta.matchCase);
+        return {
+          query: meta.query,
+          matchCase: meta.matchCase,
+          matches,
+          index: matches.length ? 0 : -1
+        };
+      }
+
+      if (meta?.type === 'step' && value.matches.length) {
+        const index = (value.index + meta.dir + value.matches.length) % value.matches.length;
+        return { ...value, index };
+      }
+
+      // A replace transaction: recompute and land on the next match
+      // after the replacement, so repeated Replace walks forward.
+      if (meta?.type === 'replaced' && value.query) {
+        const matches = computeFindMatches(newState.doc, value.query, value.matchCase);
+        let index = matches.findIndex(m => m.from >= meta.pos);
+        if (index === -1) index = matches.length ? 0 : -1;
+        return { ...value, matches, index };
+      }
+
+      // Any other edit while a search is active: keep results fresh
+      if (tr.docChanged && value.query) {
+        const matches = computeFindMatches(newState.doc, value.query, value.matchCase);
+        const index = matches.length
+          ? Math.min(Math.max(value.index, 0), matches.length - 1)
+          : -1;
+        return { ...value, matches, index };
+      }
+
+      return value;
+    }
+  },
+  props: {
+    decorations(state) {
+      const { matches, index } = findPluginKey.getState(state);
+      if (!matches.length) return null;
+      return DecorationSet.create(state.doc, matches.map((m, i) =>
+        Decoration.inline(m.from, m.to, {
+          class: i === index ? 'find-highlight-current' : 'find-highlight'
+        })
+      ));
+    }
+  }
+}));
+
 // Welcome document, shown only on the very first launch.
 // New documents otherwise start empty (with an editor placeholder).
 const welcomeContent = `# Welcome to Stoodio MD
@@ -249,7 +339,8 @@ function createTab(path = null, content = '', switchTo = true) {
     name,
     content,
     isModified: false,
-    scrollPos: 0
+    scrollPos: 0,
+    editorState: null // captured ProseMirror state (doc + undo history + cursor)
   };
 
   tabs.push(tab);
@@ -263,14 +354,68 @@ function createTab(path = null, content = '', switchTo = true) {
   return tab;
 }
 
-// Switch to a tab
+// Run a callback with the live ProseMirror view; returns its result
+function withEditorView(fn) {
+  if (!crepe) return null;
+  let result = null;
+  crepe.editor.action((ctx) => {
+    result = fn(ctx.get(editorViewCtx), ctx);
+  });
+  return result;
+}
+
+// Capture the active editor state (document, undo history, selection)
+function captureEditorState() {
+  return withEditorView((view) => view.state);
+}
+
+// Swap a previously captured state back into the live view
+function restoreEditorState(state) {
+  withEditorView((view) => view.updateState(state));
+}
+
+// Create a fresh editor state from markdown (new tab in the same view).
+// Returns false if the markdown couldn't be parsed into a document.
+function setEditorContent(markdown) {
+  const ok = withEditorView((view, ctx) => {
+    let doc = null;
+    try {
+      if (markdown) {
+        doc = ctx.get(parserCtx)(markdown);
+      }
+    } catch (err) {
+      console.error('Failed to parse markdown for tab:', err);
+      return false;
+    }
+
+    // Empty markdown parses to nothing; start from a valid empty doc
+    if (!doc) {
+      doc = view.state.schema.topNodeType.createAndFill();
+    }
+    if (!doc) return false;
+
+    view.updateState(EditorState.create({
+      doc,
+      plugins: view.state.plugins
+    }));
+    return true;
+  });
+  return ok === true;
+}
+
+// Switch to a tab. The editor view persists across switches — each tab
+// keeps its own EditorState, so undo history and cursor survive.
 async function switchTab(tabId) {
   if (tabId === activeTabId) return;
 
+  // Searching is per-document; close the panel rather than show stale results
+  if (isFindPanelOpen) hideFindPanel();
+
   // Save current tab state
   const currentTab = getActiveTab();
-  if (currentTab) {
+  if (currentTab && crepe) {
     currentTab.content = getMarkdown();
+    currentTab.editorState = isSourceMode ? null : captureEditorState();
     const editorEl = document.querySelector('.milkdown .ProseMirror');
     currentTab.scrollPos = editorEl?.scrollTop || 0;
   }
@@ -279,8 +424,19 @@ async function switchTab(tabId) {
   const newTab = getActiveTab();
 
   if (newTab) {
-    // Update editor content
-    await initEditor(newTab.content);
+    if (!crepe || isSourceMode) {
+      // No live editor to swap into (first tab, or leaving source mode):
+      // fall back to a full init
+      await initEditor(newTab.content);
+    } else if (newTab.editorState) {
+      restoreEditorState(newTab.editorState);
+      updateOutline();
+    } else if (setEditorContent(newTab.content)) {
+      updateOutline();
+    } else {
+      // Parse failed — rebuild the editor outright rather than show nothing
+      await initEditor(newTab.content);
+    }
 
     // Restore scroll position after a short delay
     setTimeout(() => {
@@ -509,10 +665,8 @@ function prevTab() {
   switchTab(tabs[prevIndex].id);
 }
 
-// Find & Replace state
+// Find & Replace state (match data itself lives in the find plugin's state)
 let isFindPanelOpen = false;
-let findMatches = [];
-let currentMatchIndex = -1;
 
 // File tree icons (SVG)
 const folderIcon = `<svg class="file-tree-icon folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -597,6 +751,11 @@ async function initEditor(content = '') {
     crepe.editor.use(fixOrderedListPlugin);
     crepe.editor.use(underlineSchema).use(toggleUnderlineCommand);
     crepe.editor.use(clipboardImagePlugin);
+    crepe.editor.use(findHighlightPlugin);
+
+    // A new editor means new schema/plugin instances — editor states
+    // captured against the old editor can't be reused
+    tabs.forEach(tab => { tab.editorState = null; });
 
     // Listen for updates
     crepe.on((listener) => {
@@ -1104,13 +1263,14 @@ function showFindPanel(showReplace = false) {
     findInput?.select();
   }, 50);
 
-  // If there's selected text, use it as search term
-  if (crepe) {
-    const selection = window.getSelection();
-    if (selection && selection.toString().trim()) {
-      findInput.value = selection.toString().trim();
-      performFind();
-    }
+  // If there's selected text in the editor, use it as the search term
+  const selectedText = withEditorView((view) => {
+    const { from, to } = view.state.selection;
+    return from !== to ? view.state.doc.textBetween(from, to, ' ') : '';
+  });
+  if (selectedText?.trim()) {
+    findInput.value = selectedText.trim();
+    performFind();
   }
 }
 
@@ -1120,11 +1280,31 @@ function hideFindPanel() {
     panel.classList.remove('show');
   }
   isFindPanelOpen = false;
-  clearFindHighlights();
+  dispatchFind({ type: 'clear' });
 }
 
-function escapeRegExp(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Dispatch a command to the find plugin and return its updated state
+function dispatchFind(meta) {
+  return withEditorView((view) => {
+    view.dispatch(view.state.tr.setMeta(findPluginKey, meta));
+    return findPluginKey.getState(view.state);
+  });
+}
+
+function getFindState() {
+  return withEditorView((view) => findPluginKey.getState(view.state));
+}
+
+// Scroll the block containing the current match into view, without
+// moving the selection (the find input keeps focus)
+function scrollToMatch(state) {
+  const match = state?.matches[state.index];
+  if (!match) return;
+  withEditorView((view) => {
+    const { node } = view.domAtPos(match.from);
+    const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 }
 
 function performFind() {
@@ -1132,207 +1312,64 @@ function performFind() {
   const matchCase = document.getElementById('find-match-case')?.checked || false;
   const searchTerm = findInput?.value || '';
 
-  clearFindHighlights();
-  findMatches = [];
-  currentMatchIndex = -1;
-
-  if (!searchTerm || !crepe) {
-    updateFindCount();
-    return;
-  }
-
-  const editorEl = document.querySelector('.milkdown .ProseMirror');
-  if (!editorEl) return;
-
-  // Use TreeWalker to find text matches
-  const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT, null, false);
-  const textNodes = [];
-
-  while (walker.nextNode()) {
-    textNodes.push(walker.currentNode);
-  }
-
-  const searchFlags = matchCase ? 'g' : 'gi';
-  const regex = new RegExp(escapeRegExp(searchTerm), searchFlags);
-
-  textNodes.forEach(node => {
-    const text = node.textContent;
-    let match;
-    regex.lastIndex = 0; // Reset regex state
-
-    while ((match = regex.exec(text)) !== null) {
-      findMatches.push({
-        node: node,
-        start: match.index,
-        end: match.index + match[0].length,
-        text: match[0]
-      });
-    }
-  });
-
-  if (findMatches.length > 0) {
-    currentMatchIndex = 0;
-    highlightMatches();
-    scrollToCurrentMatch();
-  }
-
-  updateFindCount();
+  const state = dispatchFind({ type: 'search', query: searchTerm, matchCase });
+  if (state?.index >= 0) scrollToMatch(state);
+  updateFindCount(state);
 }
 
-function highlightMatches() {
-  // Process matches in reverse order to avoid position shifts
-  const sortedMatches = [...findMatches].sort((a, b) => {
-    if (a.node !== b.node) return 0;
-    return b.start - a.start;
-  });
-
-  sortedMatches.forEach((match, index) => {
-    const originalIndex = findMatches.indexOf(match);
-    try {
-      const range = document.createRange();
-      range.setStart(match.node, match.start);
-      range.setEnd(match.node, match.end);
-
-      const highlight = document.createElement('mark');
-      highlight.className = originalIndex === currentMatchIndex ? 'find-highlight-current' : 'find-highlight';
-      highlight.dataset.findIndex = originalIndex;
-
-      range.surroundContents(highlight);
-      match.highlightElement = highlight;
-    } catch (e) {
-      console.warn('Could not highlight match:', e);
-    }
-  });
-}
-
-function clearFindHighlights() {
-  document.querySelectorAll('.find-highlight, .find-highlight-current').forEach(el => {
-    const parent = el.parentNode;
-    while (el.firstChild) {
-      parent.insertBefore(el.firstChild, el);
-    }
-    parent.removeChild(el);
-  });
-  // Normalize text nodes
-  document.querySelector('.milkdown .ProseMirror')?.normalize();
-}
-
-function updateFindCount() {
+function updateFindCount(state = getFindState()) {
   const countEl = document.getElementById('find-count');
   if (!countEl) return;
 
-  if (findMatches.length === 0) {
-    countEl.textContent = '0/0';
-  } else {
-    countEl.textContent = `${currentMatchIndex + 1}/${findMatches.length}`;
-  }
+  const total = state?.matches.length || 0;
+  countEl.textContent = total === 0 ? '0/0' : `${state.index + 1}/${total}`;
 }
 
 function findNext() {
-  if (findMatches.length === 0) return;
-
-  // Remove current highlight
-  if (findMatches[currentMatchIndex]?.highlightElement) {
-    findMatches[currentMatchIndex].highlightElement.className = 'find-highlight';
-  }
-
-  currentMatchIndex = (currentMatchIndex + 1) % findMatches.length;
-
-  // Add current highlight
-  if (findMatches[currentMatchIndex]?.highlightElement) {
-    findMatches[currentMatchIndex].highlightElement.className = 'find-highlight-current';
-  }
-
-  scrollToCurrentMatch();
-  updateFindCount();
+  const state = dispatchFind({ type: 'step', dir: 1 });
+  scrollToMatch(state);
+  updateFindCount(state);
 }
 
 function findPrevious() {
-  if (findMatches.length === 0) return;
-
-  // Remove current highlight
-  if (findMatches[currentMatchIndex]?.highlightElement) {
-    findMatches[currentMatchIndex].highlightElement.className = 'find-highlight';
-  }
-
-  currentMatchIndex = (currentMatchIndex - 1 + findMatches.length) % findMatches.length;
-
-  // Add current highlight
-  if (findMatches[currentMatchIndex]?.highlightElement) {
-    findMatches[currentMatchIndex].highlightElement.className = 'find-highlight-current';
-  }
-
-  scrollToCurrentMatch();
-  updateFindCount();
-}
-
-function scrollToCurrentMatch() {
-  if (currentMatchIndex < 0 || !findMatches[currentMatchIndex]?.highlightElement) return;
-
-  findMatches[currentMatchIndex].highlightElement.scrollIntoView({
-    behavior: 'smooth',
-    block: 'center'
-  });
+  const state = dispatchFind({ type: 'step', dir: -1 });
+  scrollToMatch(state);
+  updateFindCount(state);
 }
 
 function replaceCurrent() {
-  if (currentMatchIndex < 0 || findMatches.length === 0) return;
+  const replaceWith = document.getElementById('replace-input')?.value || '';
+  const state = getFindState();
+  const match = state?.matches[state.index];
+  if (!match) return;
 
-  const replaceInput = document.getElementById('replace-input');
-  const replaceWith = replaceInput?.value || '';
-  const match = findMatches[currentMatchIndex];
+  // A real transaction: undoable, and the find plugin recomputes matches
+  withEditorView((view) => {
+    const tr = view.state.tr.insertText(replaceWith, match.from, match.to);
+    tr.setMeta(findPluginKey, { type: 'replaced', pos: match.from + replaceWith.length });
+    view.dispatch(tr);
+  });
 
-  if (!match?.highlightElement) return;
-
-  // Replace the text content
-  match.highlightElement.textContent = replaceWith;
-
-  // Remove highlight wrapper
-  const parent = match.highlightElement.parentNode;
-  while (match.highlightElement.firstChild) {
-    parent.insertBefore(match.highlightElement.firstChild, match.highlightElement);
-  }
-  parent.removeChild(match.highlightElement);
-  parent.normalize();
-
-  // Notify document modified
-  if (window.electronAPI) {
-    window.electronAPI.documentModified();
-  }
-
-  // Re-run find to update matches
-  performFind();
+  const after = getFindState();
+  if (after?.index >= 0) scrollToMatch(after);
+  updateFindCount(after);
 }
 
 function replaceAll() {
-  const findInput = document.getElementById('find-input');
-  const replaceInput = document.getElementById('replace-input');
-  const matchCase = document.getElementById('find-match-case')?.checked || false;
-  const searchTerm = findInput?.value || '';
-  const replaceWith = replaceInput?.value || '';
+  const replaceWith = document.getElementById('replace-input')?.value || '';
+  const state = getFindState();
+  if (!state?.matches.length) return;
 
-  if (!searchTerm || !crepe) return;
+  // One transaction for all replacements (single undo step). Working
+  // back-to-front keeps earlier match positions valid.
+  withEditorView((view) => {
+    let tr = view.state.tr;
+    [...state.matches].reverse().forEach(m => {
+      tr = tr.insertText(replaceWith, m.from, m.to);
+    });
+    view.dispatch(tr);
+  });
 
-  // Get current markdown, perform replace, set content
-  const markdown = crepe.getMarkdown();
-  const searchFlags = matchCase ? 'g' : 'gi';
-  const regex = new RegExp(escapeRegExp(searchTerm), searchFlags);
-  const newMarkdown = markdown.replace(regex, replaceWith);
-
-  if (newMarkdown !== markdown) {
-    // Reinitialize editor with new content
-    initEditor(newMarkdown);
-
-    // Notify document modified
-    if (window.electronAPI) {
-      window.electronAPI.documentModified();
-    }
-  }
-
-  // Clear find state
-  clearFindHighlights();
-  findMatches = [];
-  currentMatchIndex = -1;
   updateFindCount();
 }
 
@@ -1385,7 +1422,7 @@ async function pasteAsPlainText() {
   try {
     const text = await navigator.clipboard.readText();
     if (!text) return;
-    crepe.action((ctx) => {
+    crepe.editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
       const { state } = view;
       const tr = state.tr.insertText(text);
@@ -1400,7 +1437,7 @@ async function pasteAsPlainText() {
 // Task list toggle
 function handleTaskListToggle() {
   if (!crepe) return;
-  crepe.action((ctx) => {
+  crepe.editor.action((ctx) => {
     const view = ctx.get(editorViewCtx);
     const { state } = view;
     const { $from } = state.selection;
@@ -1432,7 +1469,7 @@ function handleTaskListToggle() {
 // Clear all formatting from selection
 function clearFormatting() {
   if (!crepe) return;
-  crepe.action((ctx) => {
+  crepe.editor.action((ctx) => {
     const view = ctx.get(editorViewCtx);
     const { state } = view;
     const { from, to } = state.selection;
@@ -1516,7 +1553,7 @@ function setupElectronListeners() {
     const command = formatCommands[type];
     if (command) {
       const action = command();
-      if (action) crepe.action(action);
+      if (action) crepe.editor.action(action);
     }
   });
 
@@ -1533,7 +1570,7 @@ function setupElectronListeners() {
     const command = paragraphCommands[type];
     if (command) {
       const action = command();
-      if (action) crepe.action(action);
+      if (action) crepe.editor.action(action);
     }
   });
 
@@ -1543,7 +1580,7 @@ function setupElectronListeners() {
     const command = tableCommands[type];
     if (command) {
       const action = command();
-      if (action) crepe.action(action);
+      if (action) crepe.editor.action(action);
     }
   });
 
@@ -1564,7 +1601,7 @@ function setupElectronListeners() {
   window.electronAPI.onInsertImage?.((data) => {
     if (isSourceMode || !crepe) return;
     const action = callCommand(insertImageCommand.key, { src: data.src, alt: data.alt || '', title: data.title || '' });
-    if (action) crepe.action(action);
+    if (action) crepe.editor.action(action);
   });
 
   // Export - prepare for export (exit source mode if needed)

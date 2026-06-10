@@ -420,7 +420,6 @@ function buildMenuTemplate() {
             {
               label: 'Find and Replace...',
               accelerator: 'CmdOrCtrl+Alt+F',
-              enabled: false,
               click: () => mainWindow?.webContents.send('find-replace')
             },
             { type: 'separator' },
